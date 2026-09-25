@@ -11,8 +11,6 @@
 .pharos-drive{display:flex;align-items:center;gap:7px;min-width:0;max-width:190px;height:32px;box-sizing:border-box;padding:0 10px;border:1px solid #f3ebdc30;border-radius:4px;background:#ffffff0f;color:var(--mast-ink,#f3ebdc);font-size:var(--fs-md,13px);line-height:1;white-space:nowrap}
 .pharos-drive:hover,.pharos-drive[aria-expanded="true"]{border-color:var(--mast-brass,#d4a857);color:#f1d690}
 .pharos-drive-name{flex:0 1 auto;min-width:2.5em;font-weight:650;overflow:hidden;text-overflow:ellipsis}
-.pharos-drive-state{flex:none;color:var(--mast-muted,#c3cebc)}
-.pharos-drive-state:empty{display:none}
 .pharos-dot{flex:none;display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--sea,#315845)}
 .pharos-drive .pharos-dot{background:#8cc6a0}
 .pharos-dot.busy{background:var(--mast-brass,#d4a857);box-shadow:0 0 0 3px color-mix(in srgb,var(--mast-brass,#d4a857) 30%,transparent)}
@@ -182,24 +180,27 @@
     return activity.progress ? `${verb} ${Math.round(activity.progress * 100)}%` : verb;
   }
 
+  // The chip is just the drive's name and a dot: green when nothing is
+  // running, so ejecting stops nothing; brass while work holds the library,
+  // which an eject would stop first. The panel has the details.
   function renderChip() {
     const target = ensureChip();
     if (!target) return;
-    const dot = node('span', 'pharos-dot'), name = node('span', 'pharos-drive-name'), state = node('span', 'pharos-drive-state');
+    const dot = node('span', 'pharos-dot'), name = node('span', 'pharos-drive-name');
+    let state;
     if (!status) {
       dot.classList.add(statusError?.status === 503 ? 'warn' : 'idle');
       name.textContent = 'Library';
-      state.textContent = statusError?.status === 503 ? 'Stopping' : 'Unavailable';
+      state = statusError?.status === 503 ? 'Stopping' : 'Status unavailable';
     } else {
       name.textContent = status.drive?.ejectable ? status.drive.name : status.portable ? 'Library' : 'This Mac';
       const activities = status.activities || [];
-      if (activities.length) {
-        dot.classList.add('busy');
-        state.textContent = activitySummary(activities[0]) + (activities.length > 1 ? ` +${activities.length - 1}` : '');
-      }
+      if (activities.length) dot.classList.add('busy');
+      state = activities.length ? activities.map(activitySummary).join(', ') : 'Nothing running';
     }
-    target.replaceChildren(dot, name, state);
-    target.title = status ? `${status.drive?.name || 'Library'}: ${status.idle ? 'nothing running' : status.activities.map(item => item.label).join(', ')}` : 'Library status unavailable';
+    target.replaceChildren(dot, name);
+    target.dataset.state = !status ? 'unavailable' : status.idle ? 'idle' : 'busy';
+    target.title = `${name.textContent}: ${state}`;
     target.setAttribute('aria-label', `Library drive: ${target.title}`);
   }
 

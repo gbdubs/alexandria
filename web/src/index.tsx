@@ -335,8 +335,8 @@ function QuerySurface({ dataset, search = "", libraryView = "table", trailing, h
   }, [dataset, api.query]);
 
   return <FilterValueProvider value={filterPresentations[dataset]}>
-    <QueryBuilder api={stableApi} fields={schema.fields} total={api.total} running={api.loading} />
     {header?.(api)}
+    <QueryBuilder api={stableApi} fields={schema.fields} total={api.total} running={api.loading} />
     <MetricsPanel aggregations={api.aggregations} fields={metricFields(schema.fields)} renderers={metricRenderers} />
     {api.error ? <div className="query-table-error">{api.error.message}</div> : null}
     {dataset === "library" && libraryView === "conversation" ? <ConversationResults api={api} /> : <DataTable
@@ -772,7 +772,7 @@ function Segmented<T extends string>({ label, value, options, onChange }: { labe
 
 // A single series needs no legend unless the title does not name it (a split
 // that happens to hold one value). Hovering a column shows a key of the series
-// it holds, top to bottom as stacked, with what a folded series contains.
+// it holds, largest first, with what a folded series contains.
 function StackedColumns({ title, controls, series, buckets, period, format, tickFormat = format, noun, loading, error, legend = false }: {
   title: string; controls: React.ReactNode; series: ChartSeries[]; buckets: ChartBucket[]; period: ChartPeriod;
   format: (value: number) => string; tickFormat?: (value: number) => string; noun: string; loading: boolean; error: string; legend?: boolean;
@@ -785,7 +785,7 @@ function StackedColumns({ title, controls, series, buckets, period, format, tick
   const label = (date: Date) => period === "month" ? date.toLocaleDateString(undefined, { month: "short", year: "numeric" }) : date.toLocaleDateString(undefined, { month: "short", day: "numeric", ...(period === "day" && buckets.length > 120 ? { year: "2-digit" } : {}) });
   const heading = (bucket: ChartBucket) => `${period === "week" ? "Week of " : ""}${label(bucket.date)}`;
   const suffix = noun ? ` ${noun}` : "";
-  const present = (bucket: ChartBucket) => [...series].reverse().filter(item => (bucket.values[item.key] ?? 0) > 0);
+  const present = (bucket: ChartBucket) => series.filter(item => (bucket.values[item.key] ?? 0) > 0).sort((left, right) => bucket.values[right.key] - bucket.values[left.key]);
   const describe = (bucket: ChartBucket) => `${heading(bucket)}: `
     + (present(bucket).map(item => `${item.label} ${format(bucket.values[item.key])}`).join(", ") || "none")
     + (stacked ? `; ${format(total(bucket))}${suffix} in all` : suffix) + (bucket.detail ? `; ${bucket.detail}` : "");
@@ -1131,8 +1131,8 @@ function UsagePage() {
         : <>Text you typed or dictated into agent chats, per conversation. Harness instructions, one-click prompts, attachments, pastes, and copied agent output are counted separately; filter the table and the chart and breakdown follow. {statusText ? <span className="meta">{statusText}</span> : null}</>}</p></div>
       <div className="usage-heading-actions">
         <div className="library-view-toggle" role="group" aria-label="Usage view">
-          <button type="button" className={view === "tokens" ? "active" : ""} aria-pressed={view === "tokens"} onClick={() => choose("tokens")}>Machine Tokens</button>
           <button type="button" className={view === "writing" ? "active" : ""} aria-pressed={view === "writing"} onClick={() => choose("writing")}>Human Words</button>
+          <button type="button" className={view === "tokens" ? "active" : ""} aria-pressed={view === "tokens"} onClick={() => choose("tokens")}>Machine Tokens</button>
         </div>
         {view === "tokens" ? <RefreshPricesButton /> : null}
       </div>

@@ -43,7 +43,7 @@
 .alexandria-query-page .qt-qb { margin-bottom: 0; border-radius: 6px 6px 0 0; box-shadow: 0 4px 18px #34230d0b; }
 .alexandria-query-page .qt-table-wrap { max-height: none !important; overflow: visible !important; border-radius: 0; box-shadow: 0 4px 18px #34230d0b; }
 .alexandria-query-page .qt-table { border-radius: 0; }
-.alexandria-query-page .qt-table thead { top: 69px; z-index: 1; }
+.alexandria-query-page .qt-table thead { top: var(--app-header-height, 0px); z-index: 1; }
 .alexandria-query-page .qt-table tfoot { position: static; }
 .alexandria-query-page .qt-th { font-family: var(--serif); color: var(--ink); }
 /* Denser rows than the component's 8px/12px default; narrow screens keep its touch padding. */
