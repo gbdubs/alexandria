@@ -429,7 +429,7 @@ which changes whenever either executable does, so a build is copied once and
 later launches reuse its verified copy; copies that are neither current nor
 running (the app, its service, or an MCP server) are deleted. The copy has the
 same signature as the original, so privacy permissions carry over; with a
-stable signing identity (see the README's Code signing) they also survive
+stable signing identity (see [Code signing](technical-overview.md#code-signing)) they also survive
 rebuilds. The window shows "Opening Pharos from euclid…" while this happens.
 
 - `library.json` holds `library_dir` (the directory with `library.toml`),
