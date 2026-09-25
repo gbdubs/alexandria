@@ -1,0 +1,1343 @@
+{
+  "$schema": "https://github.com/Pythia-Software/query-table/schema/query-table.schema.json",
+  "name": "alexandria_tool_calls",
+  "version": 1,
+  "idField": "id",
+  "defaultLimit": 50,
+  "defaultSort": [
+    {
+      "field": "started_at",
+      "dir": "desc",
+      "nulls": "last"
+    }
+  ],
+  "tiebreakSort": [
+    {
+      "field": "id",
+      "dir": "asc"
+    }
+  ],
+  "defaultSelect": [
+    {
+      "field": "started_at",
+      "width": 150
+    },
+    {
+      "field": "tool_name",
+      "width": 120
+    },
+    {
+      "field": "command",
+      "width": 300
+    },
+    {
+      "field": "status",
+      "width": 80
+    },
+    {
+      "field": "error_type",
+      "width": 120
+    },
+    {
+      "field": "duration_ms",
+      "width": 100
+    },
+    {
+      "field": "result_tokens",
+      "width": 110
+    },
+    {
+      "field": "carried_tokens",
+      "width": 120
+    },
+    {
+      "field": "tool_cost_usd",
+      "width": 95
+    },
+    {
+      "field": "title",
+      "width": 240
+    }
+  ],
+  "fields": [
+    {
+      "name": "id",
+      "label": "Call ID",
+      "type": "text",
+      "group": "Evidence",
+      "select": {
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "id",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "started_at",
+      "label": "Started",
+      "type": "datetime",
+      "group": "Time",
+      "render": "datetime_rel",
+      "bindings": {
+        "postgres": {
+          "expr": "started_at",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "ended_at",
+      "label": "Finished",
+      "type": "datetime",
+      "group": "Time",
+      "render": "datetime_rel",
+      "select": {
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "ended_at",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "day",
+      "label": "Day",
+      "type": "text",
+      "group": "Time",
+      "aliases": [
+        "date"
+      ],
+      "bindings": {
+        "postgres": {
+          "expr": "day",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "week",
+      "label": "Week (Mon)",
+      "type": "text",
+      "group": "Time",
+      "select": {
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "week",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "month",
+      "label": "Month",
+      "type": "text",
+      "group": "Time",
+      "select": {
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "month",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "repository_name",
+      "label": "Repository",
+      "type": "text",
+      "group": "Context",
+      "aliases": [
+        "repo"
+      ],
+      "filter": {
+        "values": {
+          "source": "distinct"
+        }
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "repository_name",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "source_kind",
+      "label": "Source",
+      "type": "enum",
+      "group": "Context",
+      "select": {
+        "default": false
+      },
+      "filter": {
+        "values": {
+          "source": "static",
+          "options": [
+            {
+              "value": "tl1",
+              "label": "TL1"
+            },
+            {
+              "value": "tl1-export",
+              "label": "TL1 export"
+            },
+            {
+              "value": "conductor",
+              "label": "Conductor"
+            },
+            {
+              "value": "codex",
+              "label": "Codex"
+            },
+            {
+              "value": "claude",
+              "label": "Claude"
+            },
+            {
+              "value": "chatgpt",
+              "label": "ChatGPT"
+            },
+            {
+              "value": "canonical",
+              "label": "Canonical"
+            }
+          ]
+        }
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "source_kind",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "provider",
+      "label": "Provider",
+      "type": "enum",
+      "group": "Model",
+      "filter": {
+        "values": {
+          "source": "static",
+          "options": [
+            {
+              "value": "claude",
+              "label": "Claude"
+            },
+            {
+              "value": "codex",
+              "label": "Codex"
+            },
+            {
+              "value": "tl1",
+              "label": "TL1"
+            },
+            {
+              "value": "chatgpt",
+              "label": "ChatGPT"
+            },
+            {
+              "value": "canonical",
+              "label": "Canonical"
+            }
+          ]
+        }
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "provider",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "model_family",
+      "label": "Model",
+      "type": "text",
+      "group": "Model",
+      "filter": {
+        "values": {
+          "source": "distinct"
+        }
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "model_family",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "model",
+      "label": "Reported model",
+      "type": "text",
+      "group": "Model",
+      "select": {
+        "default": false
+      },
+      "filter": {
+        "values": {
+          "source": "distinct"
+        }
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "model",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "session_kind",
+      "label": "Agent",
+      "type": "enum",
+      "group": "Context",
+      "select": {
+        "default": false
+      },
+      "filter": {
+        "values": {
+          "source": "static",
+          "options": [
+            "root",
+            "subagent"
+          ]
+        }
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "session_kind",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "tool_name",
+      "label": "Tool",
+      "type": "text",
+      "group": "Tool",
+      "filter": {
+        "values": {
+          "source": "distinct"
+        }
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "tool_name",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "tool_category",
+      "label": "Tool category",
+      "type": "enum",
+      "group": "Tool",
+      "filter": {
+        "values": {
+          "source": "static",
+          "options": [
+            {
+              "value": "command",
+              "label": "Command"
+            },
+            {
+              "value": "read",
+              "label": "Read"
+            },
+            {
+              "value": "search",
+              "label": "Search"
+            },
+            {
+              "value": "edit",
+              "label": "Edit"
+            },
+            {
+              "value": "web",
+              "label": "Web"
+            },
+            {
+              "value": "agent",
+              "label": "Agent"
+            },
+            {
+              "value": "plan",
+              "label": "Plan"
+            },
+            {
+              "value": "user",
+              "label": "User"
+            },
+            {
+              "value": "mcp",
+              "label": "MCP"
+            },
+            {
+              "value": "meta",
+              "label": "Meta"
+            },
+            {
+              "value": "other",
+              "label": "Other"
+            }
+          ]
+        }
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "tool_category",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "mcp_server",
+      "label": "MCP server",
+      "type": "text",
+      "group": "Tool",
+      "select": {
+        "default": false
+      },
+      "filter": {
+        "values": {
+          "source": "distinct"
+        }
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "mcp_server",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "program",
+      "label": "Program",
+      "type": "text",
+      "group": "Command",
+      "aliases": [
+        "bash",
+        "command program"
+      ],
+      "filter": {
+        "values": {
+          "source": "distinct"
+        }
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "program",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "subcommand",
+      "label": "Subcommand",
+      "type": "text",
+      "group": "Command",
+      "filter": {
+        "values": {
+          "source": "distinct"
+        }
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "subcommand",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "command_name",
+      "label": "Command name",
+      "type": "text",
+      "group": "Command",
+      "aliases": [
+        "program and subcommand"
+      ],
+      "select": {
+        "default": false
+      },
+      "filter": {
+        "values": {
+          "source": "distinct"
+        }
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "command_name",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "command_category",
+      "label": "Command category",
+      "type": "enum",
+      "group": "Command",
+      "select": {
+        "default": false
+      },
+      "filter": {
+        "values": {
+          "source": "static",
+          "options": [
+            {
+              "value": "read",
+              "label": "Read"
+            },
+            {
+              "value": "search",
+              "label": "Search"
+            },
+            {
+              "value": "list",
+              "label": "List"
+            },
+            {
+              "value": "vcs",
+              "label": "Version control"
+            },
+            {
+              "value": "build",
+              "label": "Build"
+            },
+            {
+              "value": "test",
+              "label": "Test"
+            },
+            {
+              "value": "package",
+              "label": "Package manager"
+            },
+            {
+              "value": "file-write",
+              "label": "File write"
+            },
+            {
+              "value": "network",
+              "label": "Network"
+            },
+            {
+              "value": "process",
+              "label": "Process"
+            },
+            {
+              "value": "run",
+              "label": "Run"
+            },
+            {
+              "value": "database",
+              "label": "Database"
+            },
+            {
+              "value": "container",
+              "label": "Container"
+            },
+            {
+              "value": "cloud",
+              "label": "Cloud"
+            },
+            {
+              "value": "shell",
+              "label": "Shell"
+            },
+            {
+              "value": "other",
+              "label": "Other"
+            }
+          ]
+        }
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "command_category",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "title",
+      "label": "Work",
+      "type": "text",
+      "group": "Context",
+      "render": "work_title",
+      "bindings": {
+        "postgres": {
+          "expr": "title",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "agent_depth",
+      "label": "Agent depth",
+      "type": "number",
+      "group": "Context",
+      "render": "number",
+      "select": {
+        "default": false,
+        "align": "right"
+      },
+      "aggregate": {
+        "groupable": true
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "agent_depth",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "kind",
+      "label": "Call kind",
+      "type": "enum",
+      "group": "Tool",
+      "select": {
+        "default": false
+      },
+      "filter": {
+        "values": {
+          "source": "static",
+          "options": [
+            {
+              "value": "tool_call",
+              "label": "Tool call"
+            },
+            {
+              "value": "delegation",
+              "label": "Delegation"
+            }
+          ]
+        }
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "kind",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "command",
+      "label": "Command",
+      "type": "text",
+      "group": "Command",
+      "render": "truncate",
+      "select": {
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "command",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "command_count",
+      "label": "Commands",
+      "type": "number",
+      "group": "Command",
+      "render": "number",
+      "select": {
+        "default": false,
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "command_count",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "has_pipe",
+      "label": "Uses pipe",
+      "type": "bool",
+      "group": "Command",
+      "select": {
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "has_pipe",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "has_redirect",
+      "label": "Redirects output",
+      "type": "bool",
+      "group": "Command",
+      "select": {
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "has_redirect",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "has_heredoc",
+      "label": "Uses heredoc",
+      "type": "bool",
+      "group": "Command",
+      "select": {
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "has_heredoc",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "backgrounded",
+      "label": "Backgrounded",
+      "type": "bool",
+      "group": "Command",
+      "select": {
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "backgrounded",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "file_path",
+      "label": "File",
+      "type": "text",
+      "group": "Tool",
+      "render": "truncate",
+      "select": {
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "file_path",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "host",
+      "label": "Site",
+      "type": "text",
+      "group": "Web",
+      "aliases": [
+        "domain",
+        "website",
+        "url host"
+      ],
+      "filter": {
+        "values": {
+          "source": "distinct"
+        }
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "host",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "hosts",
+      "label": "Sites",
+      "type": "text",
+      "group": "Web",
+      "render": "truncate",
+      "aliases": [
+        "domains",
+        "all sites"
+      ],
+      "select": {
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "hosts",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "url",
+      "label": "URL",
+      "type": "text",
+      "group": "Web",
+      "render": "truncate",
+      "aliases": [
+        "link",
+        "address"
+      ],
+      "select": {
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "url",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "url_count",
+      "label": "URLs",
+      "type": "number",
+      "group": "Web",
+      "render": "number",
+      "select": {
+        "default": false,
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "url_count",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "search_query",
+      "label": "Search query",
+      "type": "text",
+      "group": "Web",
+      "render": "truncate",
+      "aliases": [
+        "web search",
+        "query"
+      ],
+      "select": {
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "search_query",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "status",
+      "label": "Status",
+      "type": "enum",
+      "group": "Outcome",
+      "render": "tool_status",
+      "filter": {
+        "values": {
+          "source": "static",
+          "options": [
+            {
+              "value": "ok",
+              "label": "OK"
+            },
+            {
+              "value": "error",
+              "label": "Error"
+            },
+            {
+              "value": "no_result",
+              "label": "No result"
+            }
+          ]
+        }
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "status",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "error_type",
+      "label": "Error type",
+      "type": "enum",
+      "group": "Outcome",
+      "filter": {
+        "values": {
+          "source": "static",
+          "options": [
+            {
+              "value": "user_rejected",
+              "label": "Rejected by user"
+            },
+            {
+              "value": "hook_blocked",
+              "label": "Blocked by hook"
+            },
+            {
+              "value": "interrupted",
+              "label": "Interrupted"
+            },
+            {
+              "value": "timeout",
+              "label": "Timed out"
+            },
+            {
+              "value": "nonzero_exit",
+              "label": "Non-zero exit"
+            },
+            {
+              "value": "file_not_read",
+              "label": "File not read first"
+            },
+            {
+              "value": "edit_no_match",
+              "label": "Edit didn't match"
+            },
+            {
+              "value": "file_not_found",
+              "label": "File not found"
+            },
+            {
+              "value": "permission_denied",
+              "label": "Permission denied"
+            },
+            {
+              "value": "invalid_input",
+              "label": "Invalid input"
+            },
+            {
+              "value": "file_too_large",
+              "label": "File too large"
+            },
+            {
+              "value": "tool_error",
+              "label": "Tool error"
+            }
+          ]
+        }
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "error_type",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "exit_code",
+      "label": "Exit code",
+      "type": "number",
+      "group": "Outcome",
+      "render": "number",
+      "select": {
+        "default": false,
+        "align": "right"
+      },
+      "aggregate": {
+        "groupable": true
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "exit_code",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "interrupted",
+      "label": "Interrupted",
+      "type": "bool",
+      "group": "Outcome",
+      "select": {
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "interrupted",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "truncated",
+      "label": "Truncated output",
+      "type": "bool",
+      "group": "Output",
+      "select": {
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "truncated",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "duration_ms",
+      "label": "Duration (ms)",
+      "type": "number",
+      "group": "Duration",
+      "render": "duration_ms",
+      "select": {
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "duration_ms",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "duration_source",
+      "label": "Duration source",
+      "type": "enum",
+      "group": "Duration",
+      "select": {
+        "default": false
+      },
+      "filter": {
+        "values": {
+          "source": "static",
+          "options": [
+            {
+              "value": "reported",
+              "label": "Reported"
+            },
+            {
+              "value": "timestamps",
+              "label": "Timestamps"
+            }
+          ]
+        }
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "duration_source",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "input_bytes",
+      "label": "Input bytes",
+      "type": "number",
+      "group": "Output",
+      "render": "byte_size",
+      "select": {
+        "default": false,
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "input_bytes",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "result_bytes",
+      "label": "Result bytes",
+      "type": "number",
+      "group": "Output",
+      "render": "byte_size",
+      "select": {
+        "default": false,
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "result_bytes",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "result_tokens",
+      "label": "Context added (tokens)",
+      "type": "number",
+      "group": "Tokens",
+      "render": "number",
+      "select": {
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "result_tokens",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "result_tokens_source",
+      "label": "Context measure",
+      "type": "enum",
+      "group": "Tokens",
+      "select": {
+        "default": false
+      },
+      "filter": {
+        "values": {
+          "source": "static",
+          "options": [
+            {
+              "value": "measured",
+              "label": "Measured"
+            },
+            {
+              "value": "estimated",
+              "label": "Estimated"
+            }
+          ]
+        }
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "result_tokens_source",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "output_tokens",
+      "label": "Call output tokens",
+      "type": "number",
+      "group": "Tokens",
+      "render": "number",
+      "select": {
+        "default": false,
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "output_tokens",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "parallel_count",
+      "label": "Calls in request",
+      "type": "number",
+      "group": "Tokens",
+      "render": "number",
+      "select": {
+        "default": false,
+        "align": "right"
+      },
+      "aggregate": {
+        "groupable": true
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "parallel_count",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "carried_requests",
+      "label": "Later requests",
+      "type": "number",
+      "group": "Tokens",
+      "render": "number",
+      "select": {
+        "default": false,
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "carried_requests",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "carried_tokens",
+      "label": "Context carried (tokens)",
+      "type": "number",
+      "group": "Tokens",
+      "render": "number",
+      "select": {
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "carried_tokens",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "lines_added",
+      "label": "Lines added",
+      "type": "number",
+      "group": "Edits",
+      "render": "number",
+      "select": {
+        "default": false,
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "lines_added",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "lines_removed",
+      "label": "Lines removed",
+      "type": "number",
+      "group": "Edits",
+      "render": "number",
+      "select": {
+        "default": false,
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "lines_removed",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "call_count",
+      "label": "Calls",
+      "type": "number",
+      "group": "Metrics",
+      "render": "number",
+      "select": {
+        "default": false,
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "call_count",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "error_count",
+      "label": "Errors",
+      "type": "number",
+      "group": "Metrics",
+      "render": "number",
+      "select": {
+        "default": false,
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "error_count",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "tool_cost_usd",
+      "label": "Cost (API $)",
+      "type": "number",
+      "group": "Cost",
+      "render": "usd",
+      "select": {
+        "align": "right"
+      },
+      "source": "derived",
+      "aggregate": {
+        "measure": false
+      }
+    },
+    {
+      "name": "context_cost_usd",
+      "label": "Context cost",
+      "type": "number",
+      "group": "Cost",
+      "render": "usd",
+      "select": {
+        "default": false,
+        "align": "right"
+      },
+      "source": "derived",
+      "aggregate": {
+        "measure": false
+      }
+    },
+    {
+      "name": "output_cost_usd",
+      "label": "Output cost",
+      "type": "number",
+      "group": "Cost",
+      "render": "usd",
+      "select": {
+        "default": false,
+        "align": "right"
+      },
+      "source": "derived",
+      "aggregate": {
+        "measure": false
+      }
+    },
+    {
+      "name": "workspace_id",
+      "label": "Workspace ID",
+      "type": "text",
+      "group": "Evidence",
+      "select": {
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "workspace_id",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "conversation_id",
+      "label": "Conversation ID",
+      "type": "text",
+      "group": "Evidence",
+      "select": {
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "conversation_id",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "call_id",
+      "label": "Provider call ID",
+      "type": "text",
+      "group": "Evidence",
+      "select": {
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "call_id",
+          "synthetic": true
+        }
+      }
+    }
+  ]
+}

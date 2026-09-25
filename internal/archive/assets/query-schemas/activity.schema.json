@@ -1,0 +1,38 @@
+{
+  "$schema": "https://github.com/Pythia-Software/query-table/schema/query-table.schema.json",
+  "name": "alexandria_activity",
+  "version": 1,
+  "idField": "id",
+  "defaultLimit": 50,
+  "defaultSort": [{ "field": "started_at", "dir": "desc", "nulls": "last" }],
+  "tiebreakSort": [{ "field": "id", "dir": "asc" }],
+  "defaultSelect": [
+    { "field": "state", "width": 95 },
+    { "field": "sources", "width": 180 },
+    { "field": "phase", "width": 150 },
+    { "field": "progress", "width": 160 },
+    { "field": "workspaces", "width": 95 },
+    { "field": "conversations", "width": 105 },
+    { "field": "messages", "width": 100 },
+    { "field": "started_at", "width": 135 },
+    { "field": "error", "width": 260 }
+  ],
+  "fields": [
+    { "name": "id", "label": "Run ID", "type": "text", "select": { "default": false }, "bindings": { "postgres": { "expr": "id" } } },
+    { "name": "state", "label": "State", "type": "enum", "group": "Run", "render": "run_state", "filter": { "values": { "source": "static", "options": ["running", "complete", "failed"] } }, "bindings": { "postgres": { "expr": "state" } } },
+    { "name": "sources", "label": "Sources", "type": "textarray", "group": "Run", "render": "tags_pills", "bindings": { "postgres": { "expr": "sources" } } },
+    { "name": "current_source", "label": "Current source", "type": "text", "group": "Run", "bindings": { "postgres": { "expr": "current_source" } } },
+    { "name": "phase", "label": "Phase", "type": "enum", "group": "Run", "bindings": { "postgres": { "expr": "phase" } } },
+    { "name": "progress", "label": "Progress", "type": "number", "group": "Progress", "render": "sync_progress", "select": { "align": "right" }, "bindings": { "postgres": { "expr": "progress", "synthetic": true } } },
+    { "name": "completed_sources", "label": "Completed sources", "type": "number", "group": "Progress", "render": "number", "select": { "align": "right" }, "bindings": { "postgres": { "expr": "completed_sources" } } },
+    { "name": "total_sources", "label": "Total sources", "type": "number", "group": "Progress", "render": "number", "select": { "align": "right" }, "bindings": { "postgres": { "expr": "total_sources" } } },
+    { "name": "workspaces", "label": "Workspaces", "type": "number", "group": "Indexed", "render": "number", "select": { "align": "right" }, "bindings": { "postgres": { "expr": "workspaces" } } },
+    { "name": "conversations", "label": "Conversations", "type": "number", "group": "Indexed", "render": "number", "select": { "align": "right" }, "bindings": { "postgres": { "expr": "conversations" } } },
+    { "name": "messages", "label": "Messages", "type": "number", "group": "Indexed", "render": "number", "select": { "align": "right" }, "bindings": { "postgres": { "expr": "messages" } } },
+    { "name": "started_at", "label": "Started", "type": "datetime", "group": "Time", "render": "datetime_rel", "bindings": { "postgres": { "expr": "started_at" } } },
+    { "name": "updated_at", "label": "Updated", "type": "datetime", "group": "Time", "render": "datetime_rel", "bindings": { "postgres": { "expr": "updated_at" } } },
+    { "name": "completed_at", "label": "Completed", "type": "datetime", "group": "Time", "render": "datetime_rel", "bindings": { "postgres": { "expr": "completed_at" } } },
+    { "name": "error", "label": "Error", "type": "text", "group": "Result", "render": "truncate", "bindings": { "postgres": { "expr": "error" } } },
+    { "name": "result_summary", "label": "Results", "type": "text", "group": "Result", "render": "truncate", "bindings": { "postgres": { "expr": "result_summary", "synthetic": true } } }
+  ]
+}
