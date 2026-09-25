@@ -118,18 +118,19 @@ func newTL1Cell(flavor, configuration string) *tl1Cell {
 // TL1Overview is the TL1 tab: totals, the flavor × configuration matrix, the
 // observed workflow graph, error clusters, detectors with investigation
 // prompts, and ranked opportunities.
-func (c *Catalog) TL1Overview(installationID string, window tl1Window) (map[string]any, error) {
-	installations, err := c.tl1Installations()
+func (c *Catalog) TL1Overview(selection tl1Selection, window tl1Window) (map[string]any, error) {
+	all, err := c.tl1Installations()
 	if err != nil {
 		return nil, err
 	}
-	if len(installations) == 0 {
-		return map[string]any{"installations": installations}, nil
+	if len(all) == 0 {
+		return map[string]any{"installations": all}, nil
 	}
-	if installationID == "" {
-		installationID = firstString(installations[0]["installation_id"])
+	installations, err := c.selectTL1(selection)
+	if err != nil {
+		return nil, err
 	}
-	data, err := c.loadTL1(installationID, window)
+	data, err := c.loadTL1(installations, window)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +148,7 @@ func (c *Catalog) TL1Overview(installationID string, window tl1Window) (map[stri
 		errors = append(errors, cluster.row())
 	}
 	result := map[string]any{
-		"installations": installations, "installation": data.Installation, "days": window.Days, "scope": data.Scope, "since": nilIfEmpty(data.Since),
+		"project": data.Project, "installations": data.Installations, "days": window.Days, "scope": data.Scope, "since": nilIfEmpty(data.Since),
 		"window": tl1WindowRow(data), "enqueues": tl1EnqueueRows(data, tl1EnqueueListLimit),
 		"totals": tl1Totals(data, candidates, human), "coverage": tl1Coverage(data), "matrix": matrix, "flavors": flavors,
 		"graph": tl1Graph(data), "errors": errors, "candidates": candidates, "human": human, "contract_repairs": contracts,

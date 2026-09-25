@@ -499,7 +499,10 @@ struct ArchiveWebView: NSViewRepresentable {
     // the header's empty space and the window drags or zooms natively. The
     // header is trimmed to `WindowChrome.titlebarHeight` so the traffic
     // lights sit centered in it, and its left edge clears them except in
-    // full screen, where macOS hides them.
+    // full screen, where macOS hides them. The page also reports its
+    // background whenever the theme changes, so the area revealed by
+    // rubber-band scrolling past either end matches it instead of showing
+    // black.
     static let windowChromeScript = """
     (() => {
       const style = document.createElement('style');
@@ -515,6 +518,10 @@ struct ArchiveWebView: NSViewRepresentable {
         event.preventDefault();
         window.webkit.messageHandlers.\(windowMessageName).postMessage(event.detail === 2 ? 'doubleClick' : 'drag');
       });
+      const reportBackground = () => window.webkit.messageHandlers.\(windowMessageName).postMessage({background: getComputedStyle(document.body).backgroundColor});
+      new MutationObserver(reportBackground).observe(document.documentElement, {attributes: true, attributeFilter: ['data-theme']});
+      matchMedia('(prefers-color-scheme: dark)').addEventListener('change', reportBackground);
+      reportBackground();
     })();
     """
     static let windowMessageName = "pharosWindow"
@@ -551,7 +558,12 @@ struct ArchiveWebView: NSViewRepresentable {
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            guard let webView, let window = webView.window, let action = message.body as? String else { return }
+            guard let webView else { return }
+            if let background = (message.body as? [String: Any])?["background"] as? String {
+                if let color = Self.color(css: background) { webView.underPageBackgroundColor = color }
+                return
+            }
+            guard let window = webView.window, let action = message.body as? String else { return }
             switch action {
             case "drag":
                 if let event = webView.lastMouseDown { window.performDrag(with: event) }
@@ -563,6 +575,15 @@ struct ArchiveWebView: NSViewRepresentable {
                 }
             default: break
             }
+        }
+
+        // Parses a computed `rgb(r, g, b)` or `rgba(r, g, b, a)`; a
+        // transparent background leaves the current color in place.
+        static func color(css: String) -> NSColor? {
+            guard css.hasPrefix("rgb") else { return nil }
+            let parts = css.split { !"0123456789.".contains($0) }.compactMap { Double($0) }
+            guard parts.count == 3 || (parts.count == 4 && parts[3] > 0) else { return nil }
+            return NSColor(srgbRed: parts[0] / 255, green: parts[1] / 255, blue: parts[2] / 255, alpha: 1)
         }
 
         private func isArchivePage(_ url: URL) -> Bool {

@@ -193,7 +193,9 @@ describe('library, drive and captures UI', { skip }, () => {
     // While it runs: the run line, and the header with its panel.
     await page.locator('#pharosHosts .pharos-run', { hasText: 'Indexing captures' }).waitFor({ timeout: 15_000 });
     await shoot(page.locator('#pharosHosts'), 'hosts-indexing');
-    await page.waitForFunction(() => /Indexing/.test(document.querySelector('#pharosDrive')?.textContent || ''), null, { timeout: 15_000 });
+    // The chip shows only the drive's name and a brass dot; what runs is in its tooltip.
+    await page.waitForFunction(() => document.querySelector('#pharosDrive')?.dataset.state === 'busy' && /Indexing/.test(document.querySelector('#pharosDrive').title), null, { timeout: 15_000 });
+    assert.equal(await page.locator('#pharosDrive').textContent(), volume);
     await page.evaluate(() => scrollTo(0, 0));
     await page.locator('#pharosDrive').click();
     const panel = page.getByRole('dialog', { name: 'Library drive' });
@@ -325,7 +327,8 @@ describe('library, drive and captures UI', { skip }, () => {
     });
     try {
       const chip = page.locator('#pharosDrive');
-      await page.waitForFunction(() => /Capturing/.test(document.querySelector('#pharosDrive')?.textContent || ''), null, { timeout: 15_000 });
+      await page.waitForFunction(() => /Capturing/.test(document.querySelector('#pharosDrive')?.title || ''), null, { timeout: 15_000 });
+      assert.equal(await page.locator('#pharosDrive .pharos-dot.busy').count(), 1);
       await chip.click();
       const panel = page.getByRole('dialog', { name: 'Library drive' });
       await panel.getByText('Capture by another process', { exact: true }).waitFor();
@@ -337,7 +340,7 @@ describe('library, drive and captures UI', { skip }, () => {
       await panel.getByText('Pharos is finishing a write; try ejecting again in a moment.').waitFor();
       await shoot(page, 'drive-panel-eject-refused');
       holder.kill();
-      await page.waitForFunction(name => document.querySelector('#pharosDrive')?.textContent === name, volume, { timeout: 15_000 });
+      await page.waitForFunction(() => document.querySelector('#pharosDrive')?.dataset.state === 'idle', null, { timeout: 15_000 });
       await page.evaluate(() => { window.__ejectAnswer = 'release'; });
       await panel.getByRole('button', { name: `Eject ${volume}` }).click();
       await panel.getByRole('button', { name: `Ejecting ${volume}…` }).waitFor();

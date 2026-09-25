@@ -61,6 +61,7 @@ Past Work also shows when an archived commit appears on the local `origin/main` 
 - **Library drive** checks and **Backups** (in Settings → Health) show the drive's encryption, Spotlight, file system, free space, volume pin and backup age, each with what to do and a copyable command, and back the library up to a folder on another drive.
 - **Activity** shows live source-sync progress, indexed workspace/conversation/message counts, failures, and per-source results from the current app session.
 - **Your writing** (in Usage) estimates how much text you typed or dictated into agent chats. Each user message is split into typed text, harness instructions, one-click templates, attachments, agent output copied from the previous 48 hours, re-sent text, likely pastes, and prompts sent by scripts or other agents. A query table lists one row per conversation, sortable and filterable by each kind of input and by tokens and cost, so "deepest conversations" is one click; the chart and breakdown above it follow the filters. The transcript reader shows the split for each message, and Settings has cards that open each Usage view. Definitions are in [`docs/human-authorship.md`](docs/human-authorship.md).
+- **Carbon footprint** (in Settings) estimates the electricity and CO₂e behind your token usage, all time or the last 30 days, split by token type (uncached input, cache writes, cache reads, output) and model tier. Energy per token comes from published inference measurements, with cache reads charged far less than recomputed input; you choose the electricity grid, data-center overhead (PUE), and a low, central, or high estimate. It is an estimate, not a measurement: factors and sources are in [`carbon/`](carbon/README.md).
 - **Health** shows retrieval coverage/freshness, index size, and external-storage health. Retrieval-only is shown as an intentional capability.
 
 Delegated work is retained as a recursive `agent_sessions` tree, including sub-agents of sub-agents and links back to each session's messages. Session and workspace usage preserve uncached input, cache reads, cache creation, output, reasoning, and any unclassified aggregate remainder separately so pricing can be applied without reconstructing provider envelopes.
@@ -97,6 +98,7 @@ GET  /api/change/{change_set_id}
 GET  /api/trace?file=&pr=
 GET  /api/receipt/{receipt_or_operation_id}
 GET  /api/health
+GET  /api/health/carbon
 GET  /api/sources
 GET  /api/activity
 GET  /api/library/status

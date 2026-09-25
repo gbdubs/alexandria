@@ -10,57 +10,44 @@ import (
 
 // getTL1 serves the TL1 tab:
 //
-//	GET /api/tl1                      installations (drives tab visibility)
-//	GET /api/tl1/overview             analysis for one installation
+//	GET /api/tl1                      installations and the projects they run (drives tab visibility)
+//	GET /api/tl1/overview             analysis for one project
 //	GET /api/tl1/flavor?name=         one flavor's definition, history, and prompt
 //	GET /api/tl1/candidate?id=        one candidate's task timeline
 //
-// All accept installation=, since= (ISO time, or "latest" for the latest
-// large enqueue), until=, days=, and scope=all|current.
+// All accept project= (its installations on every Mac, merged), installation=
+// (one Mac's), since= (ISO time, or "latest" for the latest large enqueue),
+// until=, days=, and scope=all|current.
 func (s *Server) getTL1(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
-	installation := query.Get("installation")
+	selection := tl1Selection{Project: query.Get("project"), Installation: query.Get("installation")}
 	window := tl1WindowFromQuery(query)
 	switch strings.TrimSuffix(r.URL.Path, "/") {
 	case "/api/tl1":
 		installations, err := s.Catalog.tl1Installations()
-		writeResult(w, map[string]any{"installations": installations}, err)
+		writeResult(w, map[string]any{"installations": installations, "projects": tl1Projects(installations)}, err)
 	case "/api/tl1/overview":
-		value, err := s.Catalog.TL1Overview(installation, window)
+		value, err := s.Catalog.TL1Overview(selection, window)
 		writeResult(w, value, err)
 	case "/api/tl1/flavor":
-		value, err := s.Catalog.TL1Flavor(installation, query.Get("name"), window)
+		value, err := s.Catalog.TL1Flavor(selection, query.Get("name"), window)
 		writeResult(w, value, err)
 	case "/api/tl1/candidate":
-		value, err := s.Catalog.TL1Candidate(installation, query.Get("id"))
+		value, err := s.Catalog.TL1Candidate(selection, query.Get("id"))
 		writeResult(w, value, err)
 	default:
 		writeJSON(w, map[string]any{"error": "not found"}, http.StatusNotFound)
 	}
 }
 
-func (c *Catalog) defaultTL1Installation(installationID string) (string, error) {
-	if installationID != "" {
-		return installationID, nil
-	}
-	installations, err := c.tl1Installations()
-	if err != nil {
-		return "", err
-	}
-	if len(installations) == 0 {
-		return "", fmt.Errorf("no TL1 installations are indexed; enable and sync a tl1 source")
-	}
-	return firstString(installations[0]["installation_id"]), nil
-}
-
 // TL1Flavor returns a flavor's definition, per-configuration performance,
 // definition history, recent failures, and a tuning prompt.
-func (c *Catalog) TL1Flavor(installationID, name string, window tl1Window) (map[string]any, error) {
-	installationID, err := c.defaultTL1Installation(installationID)
+func (c *Catalog) TL1Flavor(selection tl1Selection, name string, window tl1Window) (map[string]any, error) {
+	installations, err := c.selectTL1(selection)
 	if err != nil {
 		return nil, err
 	}
-	data, err := c.loadTL1(installationID, window)
+	data, err := c.loadTL1(installations, window)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +90,7 @@ func (c *Catalog) TL1Flavor(installationID, name string, window tl1Window) (map[
 			definition[key] = value
 		}
 	}
-	return map[string]any{"installation": data.Installation, "flavor": name, "definition": definition, "summary": summary, "configurations": cells,
+	return map[string]any{"project": data.Project, "installations": data.Installations, "flavor": name, "definition": definition, "summary": summary, "configurations": cells,
 		"incoming": incoming.top(15), "outgoing": outgoing.top(15), "recent_failures": failures,
 		"prompt": tl1FlavorPrompt(data, name, "Find the changes most likely to raise its advance rate and lower its cost per useful result.")}, nil
 }
@@ -142,7 +129,7 @@ func tl1TaskRowJSON(data *tl1Data, task *tl1Task) map[string]any {
 		"error_signature": nilIfEmpty(task.ErrorSignature), "error_text": nilIfEmpty(tl1Clip(task.ErrorText, 600)), "attempts": len(task.Attempts),
 		"configurations": uniqueStrings(configurations), "cost_usd": tl1Optional(cost, priced), "duration_ms": tl1Optional(duration, duration > 0),
 		"created_at": task.CreatedAt, "claimed_at": nilIfEmpty(task.ClaimedAt), "completed_at": nilIfEmpty(task.CompletedAt), "parent_task_id": nilIfEmpty(task.ParentID),
-		"shape_version": nilIfEmpty(task.ShapeVersion), "revisit": task.Revisit}
+		"shape_version": nilIfEmpty(task.ShapeVersion), "revisit": task.Revisit, "installation_id": task.Installation["installation_id"], "mac": task.Installation["host_label"]}
 	if final != nil {
 		row["conversation_native_id"] = nilIfEmpty(final.Conversation)
 		row["transcript_path"] = nilIfEmpty(tl1TranscriptPath(data, task, final))
@@ -154,12 +141,12 @@ func tl1TaskRowJSON(data *tl1Data, task *tl1Task) map[string]any {
 
 // TL1Candidate returns one candidate's tasks in order with their attempts,
 // events, review findings, and human touches.
-func (c *Catalog) TL1Candidate(installationID, candidateID string) (map[string]any, error) {
-	installationID, err := c.defaultTL1Installation(installationID)
+func (c *Catalog) TL1Candidate(selection tl1Selection, candidateID string) (map[string]any, error) {
+	installations, err := c.selectTL1(selection)
 	if err != nil {
 		return nil, err
 	}
-	data, err := c.loadTL1(installationID, tl1Window{})
+	data, err := c.loadTL1(installations, tl1Window{})
 	if err != nil {
 		return nil, err
 	}
@@ -191,25 +178,26 @@ func (c *Catalog) TL1Candidate(installationID, candidateID string) (map[string]a
 		sort.SliceStable(kept, func(i, j int) bool { return firstString(kept[i]["created_at"]) < firstString(kept[j]["created_at"]) })
 		return kept
 	}
-	return map[string]any{"installation": data.Installation, "candidate": candidate, "cost_usd": total, "tasks": tasks,
+	return map[string]any{"project": data.Project, "installations": data.Installations, "candidate": candidate, "cost_usd": total, "tasks": tasks,
 		"events": pick(data.Events), "review_findings": pick(data.Findings), "human_touches": pick(data.Touches)}, nil
 }
 
 // tl1AttemptRows backs the tl1_attempts query table: one row per attempt in
-// every installation.
+// every project, on every Mac.
 func (c *Catalog) tl1AttemptRows() ([]map[string]any, error) {
 	installations, err := c.tl1Installations()
 	if err != nil {
 		return nil, err
 	}
 	rows := []map[string]any{}
-	for _, installation := range installations {
-		data, err := c.loadTL1(firstString(installation["installation_id"]), tl1Window{})
+	for _, project := range tl1Projects(installations) {
+		data, err := c.loadTL1(project["installations"].([]map[string]any), tl1Window{})
 		if err != nil {
 			return nil, err
 		}
 		for _, attempt := range data.Attempts {
 			task := attempt.Task
+			installation := task.Installation
 			var tokens, cacheShare any
 			if total := attempt.Tokens["total_tokens"]; total > 0 {
 				tokens = total
@@ -223,7 +211,7 @@ func (c *Catalog) tl1AttemptRows() ([]map[string]any, error) {
 			}
 			rows = append(rows, map[string]any{
 				"id": firstString(installation["installation_id"]) + ":" + attempt.ID, "attempt_id": attempt.ID, "task_id": task.ID, "workspace_id": task.WorkspaceID,
-				"project": installation["project"], "title": task.Title, "flavor": task.Flavor, "execution_class": task.ExecutionClass,
+				"project": installation["project"], "installation_id": installation["installation_id"], "mac": installation["host_label"], "title": task.Title, "flavor": task.Flavor, "execution_class": task.ExecutionClass,
 				"shape_version": nilIfEmpty(short(task.ShapeVersion)), "configuration": nilIfEmpty(attempt.Configuration), "executor": nilIfEmpty(attempt.Executor),
 				"model": nilIfEmpty(attempt.Model), "effort": nilIfEmpty(attempt.Effort), "outcome": nilIfEmpty(task.Outcome), "disposition": attempt.disposition(),
 				"error_class": nilIfEmpty(attempt.ErrorClass), "error_attribution": nilIfEmpty(attempt.ErrorAttribution), "error_signature": nilIfEmpty(attempt.ErrorSignature),

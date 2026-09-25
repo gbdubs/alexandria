@@ -174,6 +174,8 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 		writeEmbeddedAsset(w, "onboarding.js", "text/javascript; charset=utf-8")
 	case path == "/assets/library.js":
 		writeEmbeddedAsset(w, "library.js", "text/javascript; charset=utf-8")
+	case path == "/assets/carbon.js":
+		writeEmbeddedAsset(w, "carbon.js", "text/javascript; charset=utf-8")
 	case path == "/api/probe":
 		writeJSON(w, ProbeSources(s.Config(), s.Catalog), http.StatusOK)
 	case path == "/api/probe/status":
@@ -244,6 +246,9 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 	case path == "/api/health/pricing":
 		value, err := s.Catalog.PricingHealth(r.Context())
 		writeResult(w, value, err)
+	case path == "/api/health/carbon":
+		value, err := s.Catalog.CarbonHealth(r.Context())
+		writeResult(w, value, err)
 	case path == "/api/health/storage":
 		writeJSON(w, merge(storage(s.Config()), map[string]any{"index_bytes": s.Catalog.indexBytes()}), 200)
 	case path == "/api/health/freshness":
@@ -253,6 +258,9 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 		writeResult(w, value, err)
 	case path == "/api/pricing":
 		writeJSON(w, s.Catalog.pricingStatus(), 200)
+	case path == "/api/usage/summary":
+		value, err := s.Catalog.UsageSummary(r.Context())
+		writeResult(w, value, err)
 	case path == "/api/tools/status":
 		value, err := s.Catalog.ToolLedgerStatus(r.Context())
 		writeResult(w, value, err)

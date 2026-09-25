@@ -23,33 +23,17 @@ var usageTimeFields = map[string]bool{"day": true, "week": true, "month": true}
 // native Claude session it wraps) keep only the representative workspace, as
 // Library does, so the same requests are not counted twice.
 func (c *Catalog) usageRows(location *time.Location) ([]map[string]any, error) {
-	ledger, err := c.usageLedger(nil)
+	ledger, err := c.representativeLedger()
 	if err != nil {
 		return nil, err
-	}
-	workspaces := []map[string]any{}
-	seen := map[string]bool{}
-	for _, row := range ledger {
-		id := firstString(row["workspace_id"])
-		if !seen[id] {
-			seen[id] = true
-			workspaces = append(workspaces, map[string]any{"id": id, "source_kind": row["source_kind"]})
-		}
 	}
 	book, err := c.loadPriceBook()
 	if err != nil {
 		return nil, err
 	}
-	representative := map[string]bool{}
-	for _, row := range c.suppressMirrors(workspaces) {
-		representative[firstString(row["id"])] = true
-	}
 	grouped := map[string]map[string]any{}
 	order := []string{}
 	for _, entry := range ledger {
-		if !representative[firstString(entry["workspace_id"])] {
-			continue
-		}
 		model := ledgerModel(entry)
 		var day, week, month, at any
 		if hour, ok := parseTime(firstString(entry["usage_hour"])); ok {
@@ -110,6 +94,35 @@ func (c *Catalog) usageRows(location *time.Location) ([]map[string]any, error) {
 		rows = append(rows, row)
 	}
 	return rows, nil
+}
+
+// representativeLedger reads the whole ledger less linked mirrors: only each
+// mirror group's representative workspace keeps its entries.
+func (c *Catalog) representativeLedger() ([]map[string]any, error) {
+	ledger, err := c.usageLedger(nil)
+	if err != nil {
+		return nil, err
+	}
+	workspaces := []map[string]any{}
+	seen := map[string]bool{}
+	for _, row := range ledger {
+		id := firstString(row["workspace_id"])
+		if !seen[id] {
+			seen[id] = true
+			workspaces = append(workspaces, map[string]any{"id": id, "source_kind": row["source_kind"]})
+		}
+	}
+	representative := map[string]bool{}
+	for _, row := range c.suppressMirrors(workspaces) {
+		representative[firstString(row["id"])] = true
+	}
+	kept := ledger[:0]
+	for _, entry := range ledger {
+		if representative[firstString(entry["workspace_id"])] {
+			kept = append(kept, entry)
+		}
+	}
+	return kept, nil
 }
 
 // usageLedger reads priced ledger entries, optionally for specific workspaces.
