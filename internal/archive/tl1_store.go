@@ -277,9 +277,39 @@ func storedTL1Version(tx *sql.Tx, installationID string) (int64, bool, error) {
 
 func storeTL1Snapshot(tx *sql.Tx, snapshot tl1Snapshot, host string) error {
 	id := snapshot.Installation.ID
-	for _, table := range tl1SnapshotTables {
-		if _, err := tx.Exec("DELETE FROM "+table+" WHERE installation_id=?", id); err != nil {
+	// Registering a legacy project moves its database to a new installation
+	// ID. The rows stored under the old ID, read from the same database on
+	// the same Mac, would count its history twice once the project's
+	// installations are combined.
+	replaced := []string{id}
+	if host != "" && snapshot.Installation.Database != "" {
+		rows, err := tx.Query("SELECT installation_id FROM tl1_installations WHERE host_id=? AND database_path=? AND installation_id<>?", host, snapshot.Installation.Database, id)
+		if err != nil {
 			return err
+		}
+		for rows.Next() {
+			var stale string
+			if err := rows.Scan(&stale); err != nil {
+				rows.Close()
+				return err
+			}
+			replaced = append(replaced, stale)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+	}
+	for _, installation := range replaced {
+		for _, table := range tl1SnapshotTables {
+			if _, err := tx.Exec("DELETE FROM "+table+" WHERE installation_id=?", installation); err != nil {
+				return err
+			}
+		}
+		if installation != id {
+			if _, err := tx.Exec("DELETE FROM tl1_installations WHERE installation_id=?", installation); err != nil {
+				return err
+			}
 		}
 	}
 	var version any

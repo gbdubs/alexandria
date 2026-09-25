@@ -339,11 +339,25 @@ func tl1Day(value string) string {
 // Prompt construction. Prompts are self-contained: an agent without Pharos can
 // still act on them from the file paths; with Pharos MCP it can dig further.
 
+// tl1PromptHeader names the project's files. A project run on several Macs
+// has them on each, so each Mac's are listed under it.
 func tl1PromptHeader(data *tl1Data, goal string) string {
-	lines := []string{goal, "", "## TL1 installation"}
-	for _, item := range [][2]string{{"Project", "project"}, {"Repository", "repository"}, {"TL1 config (flavor definitions)", "config_path"}, {"TL1 database (read-only; do not write)", "database_path"}, {"Transcripts", "transcripts_dir"}} {
-		if value := firstString(data.Installation[item[1]]); value != "" {
-			lines = append(lines, fmt.Sprintf("- %s: %s", item[0], value))
+	paths := [][2]string{{"Repository", "repository"}, {"TL1 config (flavor definitions)", "config_path"}, {"TL1 database (read-only; do not write)", "database_path"}, {"Transcripts", "transcripts_dir"}}
+	lines := []string{goal, "", "## TL1 installation", "- Project: " + data.Project}
+	indent := ""
+	if len(data.Installations) > 1 {
+		lines[2] = "## TL1 installations"
+		lines = append(lines, fmt.Sprintf("- Runs on %d Macs; this analysis combines them, and each Mac's files are on that Mac:", len(data.Installations)))
+		indent = "  "
+	}
+	for _, installation := range data.Installations {
+		if indent != "" {
+			lines = append(lines, fmt.Sprintf("- %s (%s tasks):", tl1Mac(installation), firstString(installation["tasks"])))
+		}
+		for _, item := range paths {
+			if value := firstString(installation[item[1]]); value != "" {
+				lines = append(lines, fmt.Sprintf("%s- %s: %s", indent, item[0], value))
+			}
 		}
 	}
 	if data.Since != "" || data.Until != "" {
@@ -354,11 +368,25 @@ func tl1PromptHeader(data *tl1Data, goal string) string {
 }
 
 func tl1TranscriptPath(data *tl1Data, task *tl1Task, attempt *tl1Attempt) string {
-	directory := firstString(data.Installation["transcripts_dir"])
+	directory := firstString(task.Installation["transcripts_dir"])
 	if directory == "" || attempt == nil || len(attempt.Transcripts) == 0 {
 		return ""
 	}
 	return filepath.Join(directory, task.ID, attempt.Transcripts[0])
+}
+
+// tl1Mac names the Mac an installation runs on.
+func tl1Mac(installation map[string]any) string {
+	return defaultString(installation["host_label"], "Unknown Mac")
+}
+
+// tl1OnMac says which Mac holds a task's files, when the analysis spans more
+// than one.
+func tl1OnMac(data *tl1Data, task *tl1Task) string {
+	if len(data.Installations) < 2 {
+		return ""
+	}
+	return " (on " + tl1Mac(task.Installation) + ")"
 }
 
 func tl1TaskEvidence(data *tl1Data, tasks []*tl1Task, limit int) string {
@@ -374,7 +402,7 @@ func tl1TaskEvidence(data *tl1Data, tasks []*tl1Task, limit int) string {
 			line += " on " + final.Configuration
 		}
 		if path := tl1TranscriptPath(data, task, final); path != "" {
-			line += "\n  transcript: " + path
+			line += "\n  transcript: " + path + tl1OnMac(data, task)
 		}
 		if final != nil && final.Conversation != "" {
 			line += "\n  Pharos conversation: " + final.Conversation
@@ -520,7 +548,7 @@ func tl1OutlierPrompt(data *tl1Data, outliers []map[string]any) string {
 			for _, attempt := range task.Attempts {
 				if attempt.ID == firstString(row["attempt_id"]) {
 					if path := tl1TranscriptPath(data, task, attempt); path != "" {
-						line += "\n  transcript: " + path
+						line += "\n  transcript: " + path + tl1OnMac(data, task)
 					}
 				}
 			}
@@ -623,7 +651,7 @@ func tl1ExperimentPrompt(data *tl1Data, incumbent, alternative *tl1Cell) string 
 func tl1ReviewPrompt(data *tl1Data, overview map[string]any) string {
 	totals := overview["totals"].(map[string]any)
 	lines := []string{
-		tl1PromptHeader(data, "Review this TL1 installation's performance and produce a prioritized optimization plan."),
+		tl1PromptHeader(data, "Review this TL1 project's performance and produce a prioritized optimization plan."),
 		"", "## Totals",
 		fmt.Sprintf("- tasks: %d; LLM attempts: %d; procedural attempts: %d; human tasks: %v (pending %v)", totals["tasks"], totals["llm_attempts"], totals["procedural_attempts"], totals["human_tasks"], totals["pending_human"]),
 		fmt.Sprintf("- spend: %s; candidates: %v, finished: %v; cost per finished candidate: %s", tl1Dollars(totals["cost_usd"].(float64)), totals["candidates"], totals["finished_candidates"], tl1Money(totals["cost_per_finished_candidate_usd"])),

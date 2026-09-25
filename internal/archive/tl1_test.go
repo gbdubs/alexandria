@@ -266,6 +266,135 @@ func TestTL1IngestsLegacyWorkspaces(t *testing.T) {
 	if err := catalog.DB.QueryRow("SELECT conversation_native_id FROM tl1_attempts WHERE attempt_id='att-impl'").Scan(&conversation); err != nil || conversation != database+":att-impl:1-codex.jsonl" {
 		t.Fatalf("transcript = %q %v", conversation, err)
 	}
+	// Once TL1 registers the project, its database has an installation ID,
+	// and the rows stored under its path must go, or the project's history
+	// would count twice.
+	registered, _ := json.Marshal(map[string]any{"installations": []any{map[string]any{"installation_id": "install-1", "project_name": "fixture", "config_path": config, "db_path": database, "code_repo": repository, "transcripts_dir": filepath.Join(root, "transcripts")}}})
+	registry := filepath.Join(root, tl1RegistryFile)
+	probePut(t, registry, string(registered))
+	if adapter, err = MakeAdapter(SourceConfig{Name: "tl1", Kind: "tl1", Path: registry, Account: "local", Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	if result := catalog.Ingest(adapter, nil); result.Error != nil {
+		t.Fatalf("ingest = %+v", result)
+	}
+	installations, err := catalog.tl1Installations()
+	if err != nil || len(installations) != 1 || installations[0]["installation_id"] != "install-1" || integer(installations[0]["tasks"]) != 3 {
+		t.Fatalf("installations after registration = %v %v", installations, err)
+	}
+}
+
+// tl1Rekey turns a fixture into another installation of the same project:
+// TL1 IDs are random, so another Mac's tasks never share them.
+func tl1Rekey(t *testing.T, registry, installation, prefix string) {
+	t.Helper()
+	root := filepath.Dir(registry)
+	db, err := sql.Open("sqlite", filepath.Join(root, "tl1.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, statement := range []string{
+		"UPDATE tasks SET id=?1||id, parent_task_id=?1||parent_task_id, candidate_id=?1||candidate_id",
+		"UPDATE task_attempts SET id=?1||id, task_id=?1||task_id",
+		"UPDATE candidates SET id=?1||id",
+		"UPDATE task_events SET task_id=?1||task_id",
+		"UPDATE review_findings SET id=?1||id, candidate_id=?1||candidate_id, review_task_id=?1||review_task_id",
+	} {
+		if _, err := db.Exec(statement, prefix); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, task := range []string{"task-impl", "task-review"} {
+		if err := os.Rename(filepath.Join(root, "transcripts", task), filepath.Join(root, "transcripts", prefix+task)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	data, err := os.ReadFile(registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	probePut(t, registry, strings.Replace(string(data), `"install-1"`, `"`+installation+`"`, 1))
+}
+
+func ingestTL1Registry(t *testing.T, catalog *Catalog, registry string) {
+	t.Helper()
+	adapter, err := MakeAdapter(SourceConfig{Name: "tl1", Kind: "tl1", Path: registry, Account: "local", Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := catalog.Ingest(adapter, nil); result.Error != nil {
+		t.Fatalf("ingest failed: %v", result.Error)
+	}
+}
+
+// A project TL1 runs on two Macs is two installations of one project. The
+// analysis combines them, and can narrow to either Mac.
+func TestTL1CombinesAProjectAcrossMacs(t *testing.T) {
+	catalog, _ := testCatalog(t)
+	useHost(t, "host_a")
+	first := tl1Fixture(t, 0)
+	ingestTL1Registry(t, catalog, first)
+	useHost(t, "host_b")
+	second := tl1Fixture(t, 2)
+	tl1Rekey(t, second, "install-2", "b-")
+	ingestTL1Registry(t, catalog, second)
+	// A database carried to a third Mac holds the same tasks, counted once.
+	useHost(t, "host_c")
+	data, err := os.ReadFile(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	carried := filepath.Join(t.TempDir(), tl1RegistryFile)
+	probePut(t, carried, strings.Replace(string(data), `"install-1"`, `"install-3"`, 1))
+	ingestTL1Registry(t, catalog, carried)
+
+	installations, err := catalog.tl1Installations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	projects := tl1Projects(installations)
+	if len(projects) != 1 || projects[0]["project"] != "fixture" || len(projects[0]["installations"].([]map[string]any)) != 3 {
+		t.Fatalf("projects = %v", projects)
+	}
+	overview, err := catalog.TL1Overview(tl1Selection{}, tl1Window{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	totals := overview["totals"].(map[string]any)
+	if overview["project"] != "fixture" || totals["tasks"] != 8 || totals["llm_attempts"] != 6 {
+		t.Fatalf("combined totals: project=%v %v", overview["project"], totals)
+	}
+	if clusters := overview["errors"].([]map[string]any); len(clusters) != 1 || clusters[0]["count"] != 4 {
+		t.Fatalf("both Macs' review failures should cluster together: %v", clusters)
+	}
+	prompt := firstString(overview["review_prompt"])
+	for _, want := range []string{"Runs on 3 Macs", "Mac host_a", "Mac host_b"} {
+		if !strings.Contains(prompt, want) {
+			t.Errorf("review prompt is missing %q:\n%s", want, prompt)
+		}
+	}
+	candidate, err := catalog.TL1Candidate(tl1Selection{}, "b-cand-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tasks := candidate["tasks"].([]map[string]any); len(tasks) != 5 || tasks[0]["mac"] != "Mac host_b" {
+		t.Fatalf("host_b candidate: %v", tasks)
+	}
+	narrowed, err := catalog.TL1Overview(tl1Selection{Installation: "install-2"}, tl1Window{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tasks := narrowed["totals"].(map[string]any)["tasks"]; tasks != 5 {
+		t.Fatalf("host_b alone: %v tasks", tasks)
+	}
+	if _, err := catalog.TL1Overview(tl1Selection{Project: "missing"}, tl1Window{}); err == nil {
+		t.Fatal("an unknown project should be an error")
+	}
+	rows, err := catalog.tl1AttemptRows()
+	if err != nil || len(rows) != 6 {
+		t.Fatalf("tl1_attempts rows = %d %v", len(rows), err)
+	}
 }
 
 func TestTL1ReingestCorrectsLegacyProviderInPlace(t *testing.T) {
@@ -304,7 +433,7 @@ func TestTL1ReingestCorrectsLegacyProviderInPlace(t *testing.T) {
 func TestTL1OverviewFindsConcernsWithPrompts(t *testing.T) {
 	catalog, _ := testCatalog(t)
 	ingestTL1Fixture(t, catalog, 0)
-	overview, err := catalog.TL1Overview("", tl1Window{})
+	overview, err := catalog.TL1Overview(tl1Selection{}, tl1Window{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,14 +471,14 @@ func TestTL1OverviewFindsConcernsWithPrompts(t *testing.T) {
 			t.Errorf("review prompt is missing %q:\n%s", want, prompt)
 		}
 	}
-	candidate, err := catalog.TL1Candidate("install-1", "cand-1")
+	candidate, err := catalog.TL1Candidate(tl1Selection{Installation: "install-1"}, "cand-1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if tasks := candidate["tasks"].([]map[string]any); len(tasks) != 3 || tasks[1]["disposition"] != tl1Errored {
 		t.Fatalf("candidate timeline: %v", tasks)
 	}
-	flavor, err := catalog.TL1Flavor("install-1", "implement", tl1Window{})
+	flavor, err := catalog.TL1Flavor(tl1Selection{Project: "fixture"}, "implement", tl1Window{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +486,7 @@ func TestTL1OverviewFindsConcernsWithPrompts(t *testing.T) {
 		t.Fatalf("flavor prompt should include the template: %s", flavor["prompt"])
 	}
 	// Scope "current" drops runs of superseded definitions.
-	current, err := catalog.TL1Overview("install-1", tl1Window{Scope: "current"})
+	current, err := catalog.TL1Overview(tl1Selection{Installation: "install-1"}, tl1Window{Scope: "current"})
 	if err != nil {
 		t.Fatal(err)
 	}

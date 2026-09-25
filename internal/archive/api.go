@@ -252,6 +252,9 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 		writeResult(w, value, err)
 	case path == "/api/pricing":
 		writeJSON(w, s.Catalog.pricingStatus(), 200)
+	case path == "/api/usage/summary":
+		value, err := s.Catalog.UsageSummary(r.Context())
+		writeResult(w, value, err)
 	case path == "/api/tools/status":
 		value, err := s.Catalog.ToolLedgerStatus(r.Context())
 		writeResult(w, value, err)
