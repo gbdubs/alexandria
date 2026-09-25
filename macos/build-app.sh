@@ -34,6 +34,8 @@ done
 cp "$ROOT/schemas/"*.schema.json "$ROOT/internal/archive/assets/query-schemas/"
 mkdir -p "$ROOT/internal/archive/assets/pricing"
 cp "$ROOT/pricing/cost_changes.json" "$ROOT/internal/archive/assets/pricing/cost_changes.json"
+mkdir -p "$ROOT/internal/archive/assets/carbon"
+cp "$ROOT/carbon/co2_factors.json" "$ROOT/internal/archive/assets/carbon/co2_factors.json"
 if command -v npm >/dev/null 2>&1; then
     # Always reinstall from the lockfile: an existing node_modules may have
     # drifted from package-lock.json or been modified, and `npm ci` checks
