@@ -1,0 +1,37 @@
+{
+  "$schema": "https://github.com/Pythia-Software/query-table/schema/query-table.schema.json",
+  "name": "alexandria_mcp_calls",
+  "version": 1,
+  "idField": "id",
+  "defaultLimit": 50,
+  "defaultSort": [{ "field": "called_at", "dir": "desc" }],
+  "tiebreakSort": [{ "field": "id", "dir": "desc" }],
+  "defaultSelect": [
+    { "field": "called_at", "width": 165 },
+    { "field": "tool_name", "width": 230 },
+    { "field": "status", "width": 95 },
+    { "field": "estimated_output_tokens", "width": 115 },
+    { "field": "duration_ms", "width": 95 },
+    { "field": "result_count", "width": 85 },
+    { "field": "truncated", "width": 85 }
+  ],
+  "fields": [
+    { "name": "id", "label": "Call ID", "type": "number", "group": "Call", "render": "number", "select": { "default": false, "align": "right" }, "aggregate": { "measure": false }, "bindings": { "postgres": { "expr": "id", "synthetic": true } } },
+    { "name": "called_at", "label": "Called at", "type": "datetime", "group": "Time", "render": "datetime_rel", "bindings": { "postgres": { "expr": "called_at", "synthetic": true } } },
+    { "name": "day", "label": "Day", "type": "text", "group": "Time", "select": { "default": false }, "bindings": { "postgres": { "expr": "day", "synthetic": true } } },
+    { "name": "week", "label": "Week (Mon)", "type": "text", "group": "Time", "select": { "default": false }, "bindings": { "postgres": { "expr": "week", "synthetic": true } } },
+    { "name": "month", "label": "Month", "type": "text", "group": "Time", "select": { "default": false }, "bindings": { "postgres": { "expr": "month", "synthetic": true } } },
+    { "name": "tool_name", "label": "Tool", "type": "text", "group": "Call", "filter": { "values": { "source": "distinct" } }, "bindings": { "postgres": { "expr": "tool_name", "synthetic": true } } },
+    { "name": "status", "label": "Status", "type": "enum", "group": "Call", "render": "mcp_status", "filter": { "values": { "source": "static", "options": ["ok", "error", "disabled", "oversized"] } }, "bindings": { "postgres": { "expr": "status", "synthetic": true } } },
+    { "name": "arguments_json", "label": "Arguments (sanitized)", "type": "text", "group": "Evidence", "render": "truncate", "bindings": { "postgres": { "expr": "arguments_json", "synthetic": true } } },
+    { "name": "error_text", "label": "Error", "type": "text", "group": "Evidence", "render": "truncate", "bindings": { "postgres": { "expr": "error_text", "synthetic": true } } },
+    { "name": "duration_ms", "label": "Duration (ms)", "type": "number", "group": "Performance", "render": "number", "select": { "align": "right" }, "bindings": { "postgres": { "expr": "duration_ms", "synthetic": true } } },
+    { "name": "response_bytes", "label": "Response bytes", "type": "number", "group": "Output", "render": "number", "select": { "default": false, "align": "right" }, "bindings": { "postgres": { "expr": "response_bytes", "synthetic": true } } },
+    { "name": "estimated_output_tokens", "label": "Est. output tokens", "type": "number", "group": "Output", "render": "number", "select": { "align": "right" }, "bindings": { "postgres": { "expr": "estimated_output_tokens", "synthetic": true } } },
+    { "name": "result_count", "label": "Results", "type": "number", "group": "Output", "render": "number", "select": { "align": "right" }, "bindings": { "postgres": { "expr": "result_count", "synthetic": true } } },
+    { "name": "truncated", "label": "Truncated", "type": "bool", "group": "Output", "bindings": { "postgres": { "expr": "truncated", "synthetic": true } } },
+    { "name": "call_count", "label": "Calls", "type": "number", "group": "Metrics", "render": "number", "select": { "default": false, "align": "right" }, "bindings": { "postgres": { "expr": "call_count", "synthetic": true } } },
+    { "name": "error_count", "label": "Errors", "type": "number", "group": "Metrics", "render": "number", "select": { "default": false, "align": "right" }, "bindings": { "postgres": { "expr": "error_count", "synthetic": true } } },
+    { "name": "truncated_count", "label": "Truncated calls", "type": "number", "group": "Metrics", "render": "number", "select": { "default": false, "align": "right" }, "bindings": { "postgres": { "expr": "truncated_count", "synthetic": true } } }
+  ]
+}

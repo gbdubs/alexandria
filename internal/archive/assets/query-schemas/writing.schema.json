@@ -1,0 +1,607 @@
+{
+  "$schema": "https://github.com/Pythia-Software/query-table/schema/query-table.schema.json",
+  "name": "alexandria_writing",
+  "version": 1,
+  "idField": "id",
+  "defaultLimit": 50,
+  "defaultSort": [
+    {
+      "field": "typed_words",
+      "dir": "desc"
+    }
+  ],
+  "tiebreakSort": [
+    {
+      "field": "id",
+      "dir": "asc"
+    }
+  ],
+  "defaultSelect": [
+    {
+      "field": "title",
+      "width": 280
+    },
+    {
+      "field": "repository_name",
+      "width": 150
+    },
+    {
+      "field": "last_message_at",
+      "width": 120
+    },
+    {
+      "field": "typed_words",
+      "width": 105
+    },
+    {
+      "field": "typed_turns",
+      "width": 100
+    },
+    {
+      "field": "typed_share",
+      "width": 100
+    },
+    {
+      "field": "pasted_words",
+      "width": 110
+    },
+    {
+      "field": "copied_words",
+      "width": 120
+    },
+    {
+      "field": "user_words",
+      "width": 120
+    },
+    {
+      "field": "total_tokens",
+      "width": 115
+    },
+    {
+      "field": "cost_usd",
+      "width": 105
+    },
+    {
+      "field": "typed_per_mtok",
+      "width": 120
+    }
+  ],
+  "fields": [
+    {
+      "name": "id",
+      "label": "Work ID",
+      "type": "text",
+      "select": {
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "id",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "title",
+      "label": "Work",
+      "type": "text",
+      "group": "Context",
+      "render": "work_title",
+      "bindings": {
+        "postgres": {
+          "expr": "title",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "repository_name",
+      "label": "Repository",
+      "type": "text",
+      "group": "Context",
+      "aliases": [
+        "repo"
+      ],
+      "bindings": {
+        "postgres": {
+          "expr": "repository_name",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "source_kind",
+      "label": "Source",
+      "type": "enum",
+      "group": "Context",
+      "filter": {
+        "values": {
+          "source": "static",
+          "options": [
+            {
+              "value": "tl1",
+              "label": "TL1"
+            },
+            {
+              "value": "tl1-export",
+              "label": "TL1 export"
+            },
+            {
+              "value": "conductor",
+              "label": "Conductor"
+            },
+            {
+              "value": "codex",
+              "label": "Codex"
+            },
+            {
+              "value": "claude",
+              "label": "Claude"
+            },
+            {
+              "value": "chatgpt",
+              "label": "ChatGPT"
+            },
+            {
+              "value": "canonical",
+              "label": "Canonical"
+            }
+          ]
+        }
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "source_kind",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "providers",
+      "label": "Providers",
+      "type": "text",
+      "group": "Context",
+      "aliases": [
+        "provider"
+      ],
+      "bindings": {
+        "postgres": {
+          "expr": "providers",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "first_message_at",
+      "label": "First message",
+      "type": "datetime",
+      "group": "Time",
+      "render": "datetime_rel",
+      "select": {
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "first_message_at",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "last_message_at",
+      "label": "Last message",
+      "type": "datetime",
+      "group": "Time",
+      "render": "datetime_rel",
+      "bindings": {
+        "postgres": {
+          "expr": "last_message_at",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "typed_words",
+      "label": "Typed words",
+      "type": "number",
+      "group": "Your writing",
+      "render": "number",
+      "select": {
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "typed_words",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "typed_turns",
+      "label": "Typed turns",
+      "type": "number",
+      "group": "Your writing",
+      "render": "number",
+      "select": {
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "typed_turns",
+          "synthetic": true
+        }
+      },
+      "aliases": [
+        "hands-on"
+      ]
+    },
+    {
+      "name": "user_turns",
+      "label": "User turns",
+      "type": "number",
+      "group": "Your writing",
+      "render": "number",
+      "select": {
+        "align": "right",
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "user_turns",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "typed_share",
+      "label": "Typed share %",
+      "type": "number",
+      "group": "Your writing",
+      "render": "number",
+      "select": {
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "typed_share",
+          "synthetic": true
+        }
+      },
+      "aggregate": {
+        "measure": false
+      }
+    },
+    {
+      "name": "avg_typed_words",
+      "label": "Words per typed turn",
+      "type": "number",
+      "group": "Your writing",
+      "render": "number",
+      "select": {
+        "align": "right",
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "avg_typed_words",
+          "synthetic": true
+        }
+      },
+      "aggregate": {
+        "measure": false
+      }
+    },
+    {
+      "name": "longest_typed_words",
+      "label": "Longest typed message",
+      "type": "number",
+      "group": "Your writing",
+      "render": "number",
+      "select": {
+        "align": "right",
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "longest_typed_words",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "pasted_words",
+      "label": "Likely pasted words",
+      "type": "number",
+      "group": "Other input",
+      "render": "number",
+      "select": {
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "pasted_words",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "copied_words",
+      "label": "Copied or re-sent words",
+      "type": "number",
+      "group": "Other input",
+      "render": "number",
+      "select": {
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "copied_words",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "prompt_words",
+      "label": "Template and attachment words",
+      "type": "number",
+      "group": "Other input",
+      "render": "number",
+      "select": {
+        "align": "right",
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "prompt_words",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "machine_words",
+      "label": "Harness and automation words",
+      "type": "number",
+      "group": "Other input",
+      "render": "number",
+      "select": {
+        "align": "right",
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "machine_words",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "user_words",
+      "label": "All user-turn words",
+      "type": "number",
+      "group": "Other input",
+      "render": "number",
+      "select": {
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "user_words",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "quoted_words",
+      "label": "Copied from agents",
+      "type": "number",
+      "group": "Other input",
+      "render": "number",
+      "select": {
+        "align": "right",
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "quoted_words",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "resent_words",
+      "label": "Re-sent words",
+      "type": "number",
+      "group": "Other input",
+      "render": "number",
+      "select": {
+        "align": "right",
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "resent_words",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "template_words",
+      "label": "Template words",
+      "type": "number",
+      "group": "Other input",
+      "render": "number",
+      "select": {
+        "align": "right",
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "template_words",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "attachment_words",
+      "label": "Attachment words",
+      "type": "number",
+      "group": "Other input",
+      "render": "number",
+      "select": {
+        "align": "right",
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "attachment_words",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "harness_words",
+      "label": "Harness words",
+      "type": "number",
+      "group": "Other input",
+      "render": "number",
+      "select": {
+        "align": "right",
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "harness_words",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "automated_words",
+      "label": "Automated words",
+      "type": "number",
+      "group": "Other input",
+      "render": "number",
+      "select": {
+        "align": "right",
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "automated_words",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "total_tokens",
+      "label": "Total tokens",
+      "type": "number",
+      "group": "Tokens",
+      "render": "number",
+      "select": {
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "total_tokens",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "cost_usd",
+      "label": "Cost (API $)",
+      "type": "number",
+      "group": "Cost",
+      "render": "usd",
+      "select": {
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "cost_usd",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "cost_today_usd",
+      "label": "Cost at today's prices",
+      "type": "number",
+      "group": "Cost",
+      "render": "usd",
+      "select": {
+        "default": false,
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "cost_today_usd",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "price_status",
+      "label": "Price status",
+      "type": "enum",
+      "group": "Cost",
+      "select": {
+        "default": false
+      },
+      "filter": {
+        "values": {
+          "source": "static",
+          "options": [
+            "priced",
+            "assumed",
+            "partial",
+            "unpriced"
+          ]
+        }
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "price_status",
+          "synthetic": true
+        }
+      }
+    },
+    {
+      "name": "typed_per_mtok",
+      "label": "Typed words per 1M tokens",
+      "type": "number",
+      "group": "Tokens",
+      "render": "number",
+      "select": {
+        "align": "right"
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "typed_per_mtok",
+          "synthetic": true
+        }
+      },
+      "aggregate": {
+        "measure": false
+      }
+    },
+    {
+      "name": "subagent_works",
+      "label": "Folded sub-agent works",
+      "type": "number",
+      "group": "Context",
+      "render": "number",
+      "select": {
+        "align": "right",
+        "default": false
+      },
+      "bindings": {
+        "postgres": {
+          "expr": "subagent_works",
+          "synthetic": true
+        }
+      }
+    }
+  ]
+}

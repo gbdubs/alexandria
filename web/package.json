@@ -1,0 +1,25 @@
+{
+  "name": "alexandria-query-tables",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/index.tsx --bundle --minify --format=iife --target=safari17 --outfile=../internal/archive/assets/query-tables.js",
+    "check-bundle": "esbuild src/index.tsx --bundle --minify --format=iife --target=safari17 --log-level=warning --outfile=node_modules/.cache/check-bundle/query-tables.js && cmp node_modules/.cache/check-bundle/query-tables.js ../internal/archive/assets/query-tables.js && cmp node_modules/.cache/check-bundle/query-tables.css ../internal/archive/assets/query-tables.css && echo 'query-table bundle matches web/src'"
+  },
+  "dependencies": {
+    "@pythia-software/query-table-core": "0.4.2",
+    "@pythia-software/query-table-react": "0.4.2",
+    "@pythia-software/query-table-ui": "0.4.2",
+    "@types/markdown-it": "14.1.2",
+    "markdown-it": "15.0.2",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.28",
+    "@types/react-dom": "18.3.7",
+    "esbuild": "0.27.2",
+    "typescript": "5.6.3"
+  }
+}
