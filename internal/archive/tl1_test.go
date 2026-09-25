@@ -183,6 +183,91 @@ func TestTL1IngestCapturesWorkflowAndCodexTranscripts(t *testing.T) {
 	}
 }
 
+// TL1 before registry.json listed projects in workspaces.json, and TL1 goes
+// on listing each one from there until it is next used and registered.
+func TestTL1RegistryRowsIncludeUnregisteredLegacyProjects(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string, value any) string {
+		path := filepath.Join(dir, name)
+		payload, _ := json.Marshal(value)
+		probePut(t, path, string(payload))
+		return path
+	}
+	project := func(name, config string) map[string]any {
+		return map[string]any{"project_name": name, "config_path": config, "code_repo": filepath.Dir(config), "last_used": "2026-04-29T08:12:49"}
+	}
+	// alpha keeps TL1's default locations; beta's tl1.json moves them.
+	alpha := write("alpha/tl1.json", map[string]any{"project_name": "alpha"})
+	beta := write("beta/tl1.json", map[string]any{"project_name": "beta", "db_path": "state/beta.db", "transcripts_dir": "/elsewhere/beta"})
+	gamma := write("gamma/tl1.json", map[string]any{"project_name": "gamma"})
+	delta := write("delta/tl1.json", map[string]any{"project_name": "delta"})
+	legacy := write(tl1LegacyRegistryFile, map[string]any{"workspaces": []any{project("alpha", alpha), project("beta", beta), project("gamma", gamma), project("delta", delta)}})
+	rows, err := tl1RegistryRows(legacy, os.ReadFile)
+	if err != nil || len(rows) != 4 {
+		t.Fatalf("legacy rows = %v %v", rows, err)
+	}
+	if rows[0]["db_path"] != filepath.Join(dir, "alpha.db") || rows[0]["transcripts_dir"] != filepath.Join(dir, "alpha", "transcripts") || rows[0]["installation_id"] != nil {
+		t.Fatalf("alpha = %v", rows[0])
+	}
+	if rows[1]["db_path"] != filepath.Join(dir, "beta", "state", "beta.db") || rows[1]["transcripts_dir"] != "/elsewhere/beta" {
+		t.Fatalf("beta = %v", rows[1])
+	}
+	// Once TL1 registers gamma, and another installation claims delta's
+	// database, only alpha and beta remain listed from workspaces.json,
+	// whichever registry file the source names.
+	registry := write(tl1RegistryFile, map[string]any{"installations": []any{
+		map[string]any{"installation_id": "g", "project_name": "gamma", "config_path": gamma, "code_repo": filepath.Dir(gamma), "db_path": filepath.Join(dir, "gamma.db")},
+		map[string]any{"installation_id": "d", "project_name": "delta-v2", "config_path": filepath.Join(dir, "delta-v2", "tl1.json"), "code_repo": dir, "db_path": filepath.Join(dir, "delta.db")},
+	}})
+	for _, path := range []string{registry, legacy} {
+		rows, err := tl1RegistryRows(path, os.ReadFile)
+		names := []string{}
+		for _, row := range rows {
+			names = append(names, firstString(row["project_name"]))
+		}
+		if err != nil || strings.Join(names, ",") != "gamma,delta-v2,alpha,beta" {
+			t.Fatalf("rows from %s = %v %v", filepath.Base(path), names, err)
+		}
+	}
+	other := write("other.json", map[string]any{"projects": []any{}})
+	if _, err := tl1RegistryRows(other, os.ReadFile); err == nil || !strings.Contains(err.Error(), "installations or workspaces") {
+		t.Fatalf("unrecognized registry error = %v", err)
+	}
+}
+
+func TestTL1IngestsLegacyWorkspaces(t *testing.T) {
+	root := filepath.Dir(tl1Fixture(t, 0))
+	if err := os.Remove(filepath.Join(root, tl1RegistryFile)); err != nil {
+		t.Fatal(err)
+	}
+	repository, database := filepath.Join(root, "repo"), filepath.Join(root, "tl1.db")
+	config := filepath.Join(repository, "tl1.json")
+	probePut(t, config, `{"project_name":"fixture","db_path":"../tl1.db","transcripts_dir":"../transcripts"}`)
+	payload, _ := json.Marshal(map[string]any{"workspaces": []any{map[string]any{"project_name": "fixture", "config_path": config, "code_repo": repository, "last_used": "2026-04-29T08:12:49"}}})
+	legacy := filepath.Join(root, tl1LegacyRegistryFile)
+	probePut(t, legacy, string(payload))
+	catalog, _ := testCatalog(t)
+	adapter, err := MakeAdapter(SourceConfig{Name: "tl1", Kind: "tl1", Path: legacy, Account: "local", Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := catalog.Ingest(adapter, nil); result.Error != nil || result.Workspaces != 3 {
+		t.Fatalf("ingest = %+v", result)
+	}
+	// A legacy project has no installation ID; its database identifies it.
+	var tasks int
+	var project, conversation string
+	if err := catalog.DB.QueryRow("SELECT COUNT(*) FROM tl1_tasks WHERE installation_id=?", database).Scan(&tasks); err != nil || tasks != 3 {
+		t.Fatalf("tasks = %d %v", tasks, err)
+	}
+	if err := catalog.DB.QueryRow("SELECT project FROM tl1_installations WHERE installation_id=?", database).Scan(&project); err != nil || project != "fixture" {
+		t.Fatalf("installation project = %q %v", project, err)
+	}
+	if err := catalog.DB.QueryRow("SELECT conversation_native_id FROM tl1_attempts WHERE attempt_id='att-impl'").Scan(&conversation); err != nil || conversation != database+":att-impl:1-codex.jsonl" {
+		t.Fatalf("transcript = %q %v", conversation, err)
+	}
+}
+
 func TestTL1ReingestCorrectsLegacyProviderInPlace(t *testing.T) {
 	catalog, _ := testCatalog(t)
 	ingestTL1Fixture(t, catalog, 0)

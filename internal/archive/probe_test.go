@@ -70,6 +70,42 @@ func sqliteFixture(t *testing.T, path string, tables ...string) {
 	}
 }
 
+// TL1 before registry.json listed its projects in workspaces.json.
+func TestProbeFindsTL1BeforeRegistry(t *testing.T) {
+	home := probeHome(t)
+	legacy := filepath.Join(home, "code", "legacy")
+	probePut(t, filepath.Join(legacy, "tl1.json"), `{"project_name":"legacy"}`)
+	probePut(t, filepath.Join(home, ".tl1", "legacy.db"), "db")
+	// A project inside ~/Documents is counted, never opened.
+	private := filepath.Join(home, "Documents", "private")
+	probePut(t, filepath.Join(private, "tl1.json"), `{"project_name":"private"}`)
+	workspaces, _ := json.Marshal(map[string]any{"workspaces": []map[string]any{
+		{"project_name": "legacy", "config_path": filepath.Join(legacy, "tl1.json"), "code_repo": legacy},
+		{"project_name": "private", "config_path": filepath.Join(private, "tl1.json"), "code_repo": private},
+	}})
+	probePut(t, filepath.Join(home, ".tl1", tl1LegacyRegistryFile), string(workspaces))
+	if err := os.Chmod(filepath.Join(home, "Documents"), 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(filepath.Join(home, "Documents"), 0o755) })
+
+	report := probeSources(home, Config{}, nil)
+	tl1 := candidateNamed(t, report, "tl1")
+	if tl1.Status != "found" || tl1.Path != filepath.Join(home, ".tl1", tl1LegacyRegistryFile) || tl1.Count != 1 || !tl1.Recommended ||
+		!strings.Contains(tl1.Detail, "Projects: legacy") || !strings.Contains(tl1.Detail, "1 installations in protected folders") {
+		t.Fatalf("tl1 = %+v", tl1)
+	}
+	checked := map[string]string{}
+	for _, location := range report.Checked {
+		if location.Kind == "tl1" {
+			checked[location.Path] = location.Status
+		}
+	}
+	if checked["~/.tl1/registry.json"] != "missing" || checked["~/.tl1/workspaces.json"] != "found" {
+		t.Fatalf("checked TL1 locations = %v", checked)
+	}
+}
+
 func candidateNamed(t *testing.T, report ProbeReport, name string) ProbeCandidate {
 	t.Helper()
 	for _, candidate := range report.Candidates {
