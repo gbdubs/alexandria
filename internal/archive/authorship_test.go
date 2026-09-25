@@ -248,6 +248,32 @@ func TestProseIndexServesAuthorshipQueries(t *testing.T) {
 	}
 }
 
+// The prose index also covers queries about one conversation or workspace
+// that filter on role, and without statistics SQLite takes it for them. It
+// then reads every prose message in the catalog to find a few: over 11 seconds
+// a conversation on a 42 GB catalog, against 10 ms through the conversation.
+func TestConversationQueriesAvoidProseIndex(t *testing.T) {
+	catalog, _ := testCatalog(t)
+	if err := catalog.Initialize(); err != nil {
+		t.Fatal(err)
+	}
+	for name, query := range map[string]string{
+		"document initiation": documentInitiationQuery,
+		"document outcome":    documentOutcomeQuery,
+		"library projection":  libraryDerivedSelect("w.id=?"),
+		"library previews":    libraryPreviewSelect("w.id=?"),
+	} {
+		rows, err := queryMaps(catalog.DB, "EXPLAIN QUERY PLAN "+query, "x")
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		plan, _ := json.Marshal(rows)
+		if strings.Contains(string(plan), "messages_prose_idx") || !strings.Contains(string(plan), "(conversation_id=?)") {
+			t.Errorf("plan for %s = %s", name, plan)
+		}
+	}
+}
+
 func TestClaudeKeepsHarnessTextAndMarksHeadlessRuns(t *testing.T) {
 	prompt := "<system_instruction>\nYou are working inside Conductor.\n</system_instruction>\n\nShip the fix"
 	messages := parseJSONL(t, "claude", filepath.Join(t.TempDir(), "session.jsonl"),
