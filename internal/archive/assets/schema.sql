@@ -481,6 +481,20 @@ CREATE TABLE IF NOT EXISTS semantic_documents (
   indexed_at TEXT NOT NULL
 );
 
+-- Each semantic_documents vector again, as little-endian float32s: a Library
+-- search scores every workspace, and reading and parsing vector_json for all
+-- of them took seconds. vector_json stays for builds that predate this table.
+-- When one of them rewrites a vector, the trigger drops the stale copy; search
+-- reads vector_json for a workspace without one until Initialize restores it.
+CREATE TABLE IF NOT EXISTS semantic_vectors (
+  workspace_id TEXT PRIMARY KEY REFERENCES semantic_documents(workspace_id) ON DELETE CASCADE,
+  vector BLOB NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS semantic_vectors_stale
+AFTER UPDATE OF vector_json ON semantic_documents BEGIN
+  DELETE FROM semantic_vectors WHERE workspace_id=OLD.workspace_id;
+END;
+
 CREATE TABLE IF NOT EXISTS task_attempts (
   id TEXT PRIMARY KEY,
   work_item_id TEXT NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,

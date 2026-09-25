@@ -250,6 +250,9 @@ func (c *Catalog) Initialize() error {
 	if err := c.backfillConversationDocuments(); err != nil {
 		return err
 	}
+	if err := c.backfillSemanticVectors(); err != nil {
+		return err
+	}
 	if err := c.syncPricing(); err != nil {
 		return err
 	}
@@ -657,9 +660,12 @@ func (c *Catalog) computeSearchRows(options SearchOptions, fields libraryFields)
 	args := []any{}
 	relevance := map[string]float64{}
 	if parsed := ftsQuery(options.Query); strings.TrimSpace(options.Query) != "" && parsed != "" {
-		matches, err := queryMapsContext(ctx, c.DB, `SELECT c.workspace_id,bm25(messages_fts) score FROM messages_fts
-			JOIN messages m ON m.id=messages_fts.message_id JOIN conversations c ON c.id=m.conversation_id
-			WHERE messages_fts MATCH ? ORDER BY score LIMIT 500`, parsed)
+		// FTS5 ranks the matches itself; only the best 500 are then joined to
+		// their workspaces. Joining every match first read a messages row per
+		// match: seconds for a common word.
+		matches, err := queryMapsContext(ctx, c.DB, `SELECT c.workspace_id FROM
+			(SELECT message_id,rank FROM messages_fts WHERE messages_fts MATCH ? ORDER BY rank LIMIT 500) f
+			JOIN messages m ON m.id=f.message_id JOIN conversations c ON c.id=m.conversation_id ORDER BY f.rank`, parsed)
 		if err != nil {
 			return nil, err
 		}
@@ -669,28 +675,8 @@ func (c *Catalog) computeSearchRows(options SearchOptions, fields libraryFields)
 				relevance[id] = 1 / float64(index+1)
 			}
 		}
-		queryVector := semanticEmbed(options.Query)
-		documents, semanticErr := queryMapsContext(ctx, c.DB, "SELECT workspace_id,vector_json FROM semantic_documents")
+		scores, semanticErr := c.semanticMatches(ctx, options.Query, .05, 500)
 		if semanticErr == nil {
-			type scored struct {
-				id    string
-				score float64
-			}
-			scores := []scored{}
-			for _, document := range documents {
-				vector, decodeErr := decodeVector(document["vector_json"])
-				if decodeErr != nil {
-					continue
-				}
-				score := semanticCosine(queryVector, vector)
-				if score > .05 {
-					scores = append(scores, scored{firstString(document["workspace_id"]), score})
-				}
-			}
-			sort.Slice(scores, func(i, j int) bool { return scores[i].score > scores[j].score })
-			if len(scores) > 500 {
-				scores = scores[:500]
-			}
 			for _, item := range scores {
 				if lexical, exists := relevance[item.id]; exists {
 					relevance[item.id] = item.score*.6 + lexical*.4
