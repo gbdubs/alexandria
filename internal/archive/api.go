@@ -78,6 +78,7 @@ func (s *Server) Serve() error {
 	// Requests are cancelled when the service stops.
 	server := &http.Server{Handler: s, ReadHeaderTimeout: 5 * time.Second, BaseContext: func(net.Listener) context.Context { return s.life.ctx }}
 	s.spawn(s.Catalog.maintainLibrary)
+	s.spawn(s.Catalog.maintainSubstringIndex)
 	s.spawn(func(ctx context.Context) { s.Catalog.keepWALSmall(ctx, 10*time.Second, walSizeLimit) })
 	s.refreshGitInBackground(true)
 	return s.serveUntilStopped(server, listener)
@@ -276,6 +277,9 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, s.indexStatus(), http.StatusOK)
 	case path == "/api/backup":
 		writeJSON(w, s.backupStatus(), http.StatusOK)
+	case path == "/api/search/status":
+		progress, err := s.Catalog.substringIndexProgress(r.Context())
+		writeResult(w, map[string]any{"substring": progress}, err)
 	case path == "/api/library/status":
 		writeJSON(w, s.libraryStatus(), http.StatusOK)
 	case path == "/api/health/drive":
@@ -414,7 +418,7 @@ func (s *Server) post(w http.ResponseWriter, r *http.Request) {
 }
 
 func searchOptions(query url.Values) (SearchOptions, error) {
-	options := SearchOptions{Query: query.Get("q"), Repository: query.Get("repository"), Source: query.Get("source"), File: query.Get("file"), Owner: query.Get("owner"), Provider: query.Get("provider"), Model: query.Get("model"), From: query.Get("from"), To: query.Get("to"), Flavor: query.Get("flavor"), Version: query.Get("version"), Outcome: query.Get("outcome"), Error: query.Get("error"), Metric: query.Get("metric"), ChangedOnly: query.Get("changed") == "1", Limit: 50}
+	options := SearchOptions{Query: query.Get("q"), Repository: query.Get("repository"), Source: query.Get("source"), File: query.Get("file"), Owner: query.Get("owner"), Provider: query.Get("provider"), Model: query.Get("model"), From: query.Get("from"), To: query.Get("to"), Flavor: query.Get("flavor"), Version: query.Get("version"), Outcome: query.Get("outcome"), Error: query.Get("error"), Metric: query.Get("metric"), ChangedOnly: query.Get("changed") == "1", Substring: query.Get("substring") == "1", Limit: 50}
 	if query.Get("limit") != "" {
 		value, err := strconv.Atoi(query.Get("limit"))
 		if err != nil {

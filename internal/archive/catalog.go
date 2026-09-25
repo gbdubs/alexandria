@@ -237,6 +237,12 @@ func (c *Catalog) Initialize() error {
 	} else if err != nil {
 		return err
 	}
+	// A catalog with no conversations yet has nothing for the substring
+	// index to catch up on; ingest indexes each conversation it adds.
+	if _, err := c.DB.Exec(`INSERT OR IGNORE INTO meta(key,value) SELECT 'message_trigram_version','1'
+		WHERE NOT EXISTS(SELECT 1 FROM conversations)`); err != nil {
+		return err
+	}
 	if err := c.backfillAgentSessions(); err != nil {
 		return err
 	}
@@ -602,7 +608,12 @@ type SearchOptions struct {
 	PR                                                                                                         *int
 	Minimum, Maximum                                                                                           *float64
 	ChangedOnly                                                                                                bool
-	Limit, Offset                                                                                              int
+	// Substring adds matches inside words, from the substring index.
+	Substring     bool
+	Limit, Offset int
+	// evidence, when set, receives what matched each workspace the query
+	// found, for explaining a page of results.
+	evidence *map[string]*searchEvidence
 	// ctx lets an abandoned HTTP request interrupt the library query.
 	ctx context.Context
 }
@@ -610,7 +621,9 @@ type SearchOptions struct {
 // unfiltered reports whether options select every Library row, which is the
 // set cachedLibraryRows keeps between requests.
 func (o SearchOptions) unfiltered() bool {
-	o.ctx, o.Limit, o.Offset = nil, 0, 0
+	o.ctx, o.Limit, o.Offset, o.evidence = nil, 0, 0, nil
+	// Substring changes only what a query matches.
+	o.Substring = o.Substring && o.Query != ""
 	return o == SearchOptions{}
 }
 
@@ -655,55 +668,20 @@ func (c *Catalog) computeSearchRows(options SearchOptions, fields libraryFields)
 	ctx := options.context()
 	where := []string{}
 	args := []any{}
-	relevance := map[string]float64{}
-	if parsed := ftsQuery(options.Query); strings.TrimSpace(options.Query) != "" && parsed != "" {
-		matches, err := queryMapsContext(ctx, c.DB, `SELECT c.workspace_id,bm25(messages_fts) score FROM messages_fts
-			JOIN messages m ON m.id=messages_fts.message_id JOIN conversations c ON c.id=m.conversation_id
-			WHERE messages_fts MATCH ? ORDER BY score LIMIT 500`, parsed)
-		if err != nil {
+	var evidence map[string]*searchEvidence
+	if strings.TrimSpace(options.Query) != "" && ftsQuery(options.Query) != "" {
+		var err error
+		if evidence, err = c.searchEvidence(ctx, options); err != nil {
 			return nil, err
 		}
-		for index, match := range matches {
-			id := firstString(match["workspace_id"])
-			if _, exists := relevance[id]; !exists {
-				relevance[id] = 1 / float64(index+1)
-			}
+		if options.evidence != nil {
+			*options.evidence = evidence
 		}
-		queryVector := semanticEmbed(options.Query)
-		documents, semanticErr := queryMapsContext(ctx, c.DB, "SELECT workspace_id,vector_json FROM semantic_documents")
-		if semanticErr == nil {
-			type scored struct {
-				id    string
-				score float64
-			}
-			scores := []scored{}
-			for _, document := range documents {
-				vector, decodeErr := decodeVector(document["vector_json"])
-				if decodeErr != nil {
-					continue
-				}
-				score := semanticCosine(queryVector, vector)
-				if score > .05 {
-					scores = append(scores, scored{firstString(document["workspace_id"]), score})
-				}
-			}
-			sort.Slice(scores, func(i, j int) bool { return scores[i].score > scores[j].score })
-			if len(scores) > 500 {
-				scores = scores[:500]
-			}
-			for _, item := range scores {
-				if lexical, exists := relevance[item.id]; exists {
-					relevance[item.id] = item.score*.6 + lexical*.4
-				} else {
-					relevance[item.id] = item.score * .6
-				}
-			}
-		}
-		if len(relevance) == 0 {
+		if len(evidence) == 0 {
 			return []map[string]any{}, nil
 		}
-		where = append(where, "w.id IN ("+placeholders(len(relevance))+")")
-		for id := range relevance {
+		where = append(where, "w.id IN ("+placeholders(len(evidence))+")")
+		for id := range evidence {
 			args = append(args, id)
 		}
 	}
@@ -784,15 +762,15 @@ func (c *Catalog) computeSearchRows(options SearchOptions, fields libraryFields)
 		return nil, err
 	}
 	for _, row := range rows {
-		if score, ok := relevance[firstString(row["id"])]; ok {
-			row["score"] = score
-			row["match_types"] = []string{"lexical"}
+		if found := evidence[firstString(row["id"])]; found != nil {
+			row["score"] = found.score()
+			row["match_types"] = found.matchTypes()
 		} else {
 			row["score"] = 0.0
 			row["match_types"] = []string{"structured"}
 		}
 	}
-	if len(relevance) > 0 {
+	if len(evidence) > 0 {
 		sort.SliceStable(rows, func(i, j int) bool { return rows[i]["score"].(float64) > rows[j]["score"].(float64) })
 	}
 	rows = c.suppressMirrors(rows)

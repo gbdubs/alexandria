@@ -915,6 +915,9 @@ func deleteConversationFTS(tx *sql.Tx, conversationID string) error {
 	if _, err := tx.Exec("DELETE FROM messages_fts WHERE rowid IN (SELECT fts_rowid FROM message_fts_rows WHERE "+where+")", conversationID); err != nil {
 		return err
 	}
+	if _, err := tx.Exec("DELETE FROM messages_trigram WHERE rowid IN (SELECT fts_rowid FROM message_fts_rows WHERE "+where+")", conversationID); err != nil {
+		return err
+	}
 	_, err := tx.Exec("DELETE FROM message_fts_rows WHERE "+where, conversationID)
 	return err
 }
@@ -927,7 +930,10 @@ func insertConversationFTS(tx *sql.Tx, conversationID string) error {
 	if _, err := tx.Exec("INSERT INTO messages_fts(message_id,text) SELECT id,text FROM messages WHERE conversation_id=? AND text<>''", conversationID); err != nil {
 		return err
 	}
-	_, err := tx.Exec("INSERT INTO message_fts_rows(message_id,fts_rowid) SELECT message_id,rowid FROM messages_fts WHERE rowid>?", lastRowID)
+	if _, err := tx.Exec("INSERT INTO message_fts_rows(message_id,fts_rowid) SELECT message_id,rowid FROM messages_fts WHERE rowid>?", lastRowID); err != nil {
+		return err
+	}
+	_, err := tx.Exec(substringInsert("m.conversation_id=?"), conversationID)
 	return err
 }
 

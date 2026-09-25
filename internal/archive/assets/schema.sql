@@ -181,6 +181,10 @@ CREATE TABLE IF NOT EXISTS message_fts_rows (
   message_id TEXT PRIMARY KEY,
   fts_rowid INTEGER NOT NULL UNIQUE
 );
+-- Substring search over conversation prose (see substring_index.go). Rows
+-- share their message's messages_fts rowid. Contentless: the text lives in
+-- messages, and matches are read back through message_fts_rows.
+CREATE VIRTUAL TABLE IF NOT EXISTS messages_trigram USING fts5(text, content='', contentless_delete=1, tokenize='trigram');
 
 CREATE TABLE IF NOT EXISTS agent_sessions (
   id TEXT PRIMARY KEY,
