@@ -1,265 +1,200 @@
-# Pharos
+<p align="center">
+  <img src="macos/AppIcon.svg" alt="Pharos lighthouse icon" width="160">
+</p>
 
-Pharos is a local-first macOS library for finding past work across TL1, Conductor, Codex, Claude, and supported desktop exports. A second capability, preserving and reclaiming **TL1-owned** workspaces through a custody-aware owner hook, is mothballed; see [`docs/reclamation/README.md`](docs/reclamation/README.md) for what remains and how to resume it.
+<h1 align="center">Pharos</h1>
 
-The primary implementation is Go 1.26 with SQLite FTS, a local concept index, an authenticated loopback API, a read-only MCP server, and a responsive desktop UI. The Go service and UI are embedded in the macOS `.app`; the earlier Python implementation remains in `src/` as a compatibility reference while the destructive TL1 workflow is deliberately held back.
+<p align="center">
+  <strong>A token catalog and optimizer for everything you've done with coding agents.</strong>
+</p>
 
-Pharos was previously named Alexandria (and before that, AI Work Archive). Only the visible name changed: the CLI executable is still `alexandria`, configuration still lives in `AI Work Archive`, and internal identifiers keep their earlier names so existing configs, saved views, and preferences carry over.
+<p align="center">
+  <a href="https://grady.dev/projects/pharos">Blog post</a> ·
+  <a href="#getting-started">Getting started</a> ·
+  <a href="#make-it-yours">Make it yours</a> ·
+  <a href="docs/technical-overview.md">Technical overview</a> ·
+  <a href="#contact">Contact</a>
+</p>
 
-## Safety defaults
+<p align="center">
+  <img alt="macOS 14+" src="https://img.shields.io/badge/macOS-14%2B-2b5241">
+  <img alt="Go 1.26" src="https://img.shields.io/badge/Go-1.26-2b5241">
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-d4a857"></a>
+</p>
 
-- Every configured source is read-only. No home-directory scan occurs: `alexandria probe` and the new-Mac panel check only a fixed list of known agent locations, and nothing is indexed until you opt in.
-- No source is reclaimed. TL1 reclamation is mothballed and excluded from the default build.
-- The archive never calls `rm -rf`, `git worktree remove`, `git worktree prune`, or `git gc`. TL1 owns the worker handshake, lock/lease, atomic recheck, and exact-resource removal.
-- Preservation must fit the 100,000,000-byte logical cap, reside on the pinned volume, and pass a complete hash/reopen check before acknowledgement.
-- Heavy work is deferred unless CPU, memory, and authoritative TL1/agent activity signals all say the machine is truly idle. Unknown owner activity means “not idle.”
+---
 
-## Quick start
+Pharos gathers your conversations with Claude Code, Codex, Conductor, and ChatGPT
+exports into one searchable library on your Mac, or on an external drive that
+moves between Macs. You can search past work by what you were trying to do, see
+what each piece of work cost in tokens and dollars, find which tools and
+commands your agents spend their context on, and give your agents read-only
+access to the whole history over MCP. Nothing leaves your machine: every source
+is read-only, and the service only listens on loopback.
 
-```sh
-./launch.sh
-```
+For the story of why I built it and what I learned from my own numbers, read the
+blog post: **[grady.dev/projects/pharos](https://grady.dev/projects/pharos)**.
 
-This one command builds the Go service and Swift wrapper, initializes
-`~/Library/Application Support/AI Work Archive/archive.toml` if it is missing,
-builds the macOS app, and launches it. Existing configuration is preserved.
+![The Library tab: a search for "hardcoding" across every agent conversation, shown as a filterable table of work with repository, model, tokens, cost, and PRs](docs/images/library.png)
 
-Edit that configuration to set `archive_root`, paste the value reported by
-`dist/Pharos.app/Contents/MacOS/alexandria volume-id /Volumes/euclid`, and set `enabled = true`
-only on source paths you want indexed. Then ingest from the workspace when you
-want to refresh the library:
+## Getting started
 
-```sh
-dist/Pharos.app/Contents/MacOS/alexandria --config "$HOME/Library/Application Support/AI Work Archive/archive.toml" ingest
-```
+### Requirements
 
-To keep the app and its whole library on an external drive that moves between
-Macs instead, run `macos/install-library.sh /Volumes/euclid/Pharos`. The app
-then uses the `library.toml` beside it, whose paths are relative to its own directory;
-see [Portable library](docs/configuration.md#portable-library). On each Mac the
-drive is plugged into, double-click **Add This Mac.command** beside the app: it
-finds that Mac's Claude Code, Codex, Conductor, and TL1 history, captures it
-onto the drive, and indexes it ([Adding a Mac](docs/configuration.md#adding-a-mac)).
-To bring an existing per-user install along without re-indexing, add `--adopt`
-with its `archive.toml`; see [Moving an existing install onto a drive](docs/configuration.md#moving-an-existing-install-onto-a-drive).
+- macOS 14 or later
+- [Go](https://go.dev/dl/). `go.mod` pins Go 1.26, and an older `go` downloads it automatically.
+- Xcode Command Line Tools (`xcode-select --install`) for the Swift wrapper
+- Node.js and npm (optional; without them the checked-in frontend bundle is used)
 
-The UI has separate Library, Usage, Tools, MCP, and Settings areas. Library, Usage, Tools, Activity, and MCP call history
-use the shared query-table pattern: schema-driven columns, field discovery,
-filtering (including OR/NOT), multi-sort, paging, persistent saved views,
-optional aggregate metrics, column reorder, and resize.
+### 1. Build a library
 
-- **Library** searches content, repositories, source types, and actual changed-file inventory. A search matches whole words anywhere, related terms through the local concept index, and, with **Match inside words** (on by default), three or more characters inside a word in conversation messages (`log_que` finds `catalog_query`). Tool output is matched by whole words only, since a substring index over it would be many times its size. With **Show why each result matched** (also on by default), each result lists its matching messages with the matched text marked and a link to each message. Its score breakdown shows the text rank and, for related terms, which of your words matched which words and fields, and how much of the similarity is hashing noise rather than shared words. Catalogs from before the substring index build it in the background (shown under Library drive). **Sub-agents** (delegated sessions, including nested ones), **Sub-agent depth** (deepest nesting below the workspace's own session), and **Compactions** (context compactions across the workspace's sessions) are filterable, sortable, and groupable number fields. Work detail shows evidence-linked summaries, attempted/checkpointed/integrated changes, conversations, metrics, PR associations, and receipts.
-
-Past Work also shows when an archived commit appears on the local `origin/main` history. It links the first mainline commit containing that work, whether it arrived through a merge commit or directly. This uses local Git objects only; squash merges and work without a retained commit ID cannot be attributed by ancestry. Refresh the local `origin/main` ref and sync a source to update these associations.
-- **TL1** appears once a TL1 source is synced. It compares each flavor across agent configurations (advance, escalation, and agent error rates, cost per useful result, time, tokens, cache reuse), clusters errors by normalized signature and who can fix them, traces human attention and review findings to their causes, segments work by TL1's large enqueues (defaulting to the latest, so analysis follows the most recent flavor revisions), and ranks concerns and savings opportunities, each with a copyable investigation prompt. Flavor and candidate drill-downs and a per-run query table sit underneath. See [`docs/tl1-analysis.md`](docs/tl1-analysis.md).
-- **Usage** has two views, switched at the top of the page, and remembers the last one. **Tokens** is the token-usage query table: one row per agent session, local day, and model, with uncached input, cache reads, cache writes, output, and reasoning kept separate. Provider, model, repository, source, agent kind, and day/week/month are all filter and group-by fields, so metrics such as "cache reads per week by model" are a saved view. A stacked chart above the table shows tokens or cost per day, week, or month over the last 30 days to all time, split by token type, provider, model, repository, or agent kind, and follows the table's filters. Preset buttons set up common breakdowns. Linked mirrors of the same work are counted once. **Your writing** is described below.
-- **Tools** analyzes tool use from retained transcripts. A daily summary table groups calls by tool, shell program and subcommand (`git status`, `go test`, `sed`), model, repository, and agent kind, with error counts by kind, durations, the tokens each result added to the context, the tokens re-read by later requests until compaction, and their API-equivalent cost. A per-call table filters and sorts every call; a summary row drills into its calls, and each call opens with its parsed commands, input, and result. Each call also records the sites it reached: URLs from web fetches, browser navigation, Codex web searches, and network commands such as `curl`, plus any web search query and the links it returned. Presets cover error rates, failure kinds, top commands, shell calls a dedicated tool could make, slow tools, test and build time, context cost, sites reached, and web searches. Definitions are in [`docs/tool-analytics.md`](docs/tool-analytics.md).
-- **MCP** controls local agent access, provides a copyable stdio connection definition and setup prompt, and offers a query-table of recent tool calls with filters, saved views, metrics, response-size estimates, duration, result counts, truncation, and errors.
-- **Sources** lists every configured source, path availability, coverage, last attempted and successful sync, and errors. It provides persistent enable/pause controls, **Sync one** for safe trials even while paused, and **Sync all enabled** for global refreshes.
-- **Library drive** (in the header) names the drive holding the library and what is holding or writing the library (sync, index, capture, backup, Git lookups, Library view refreshes), with progress. Its panel says how to disconnect the drive: always **Eject**, which in the app releases the library first and then ejects the drive, or says why not; in a plain browser it says how to eject in Finder. See [Library status and Eject](docs/configuration.md#library-status-and-eject).
-- **Macs and captures** (in Settings → Sources) lists this Mac and every Mac whose captures are in the library, with when each source was captured and indexed and which need indexing, plus **Capture** and **Index** for one Mac or all. A newly added Mac is captured right after onboarding, then offered **Index now**.
-- **Library drive** checks and **Backups** (in Settings → Health) show the drive's encryption, Spotlight, file system, free space, volume pin and backup age, each with what to do and a copyable command, and back the library up to a folder on another drive.
-- **Activity** shows live source-sync progress, indexed workspace/conversation/message counts, failures, and per-source results from the current app session.
-- **Your writing** (in Usage) estimates how much text you typed or dictated into agent chats. Each user message is split into typed text, harness instructions, one-click templates, attachments, agent output copied from the previous 48 hours, re-sent text, likely pastes, and prompts sent by scripts or other agents. A query table lists one row per conversation, sortable and filterable by each kind of input and by tokens and cost, so "deepest conversations" is one click; the chart and breakdown above it follow the filters. The transcript reader shows the split for each message, and Settings has cards that open each Usage view. Definitions are in [`docs/human-authorship.md`](docs/human-authorship.md).
-- **Carbon footprint** (in Settings) estimates the electricity and CO₂e behind your token usage, all time or the last 30 days, split by token type (uncached input, cache writes, cache reads, output) and model tier. Energy per token comes from published inference measurements, with cache reads charged far less than recomputed input; you choose the electricity grid, data-center overhead (PUE), and a low, central, or high estimate. It is an estimate, not a measurement: factors and sources are in [`carbon/`](carbon/README.md).
-- **Health** shows retrieval coverage/freshness, index size, and external-storage health. Retrieval-only is shown as an intentional capability.
-
-Delegated work is retained as a recursive `agent_sessions` tree, including sub-agents of sub-agents and links back to each session's messages. Session and workspace usage preserve uncached input, cache reads, cache creation, output, reasoning, and any unclassified aggregate remainder separately so pricing can be applied without reconstructing provider envelopes.
-
-Run diagnostics with `dist/Pharos.app/Contents/MacOS/alexandria --config "$HOME/Library/Application Support/AI Work Archive/archive.toml" doctor`. Configuration is documented in [`docs/configuration.md`](docs/configuration.md).
-
-## Sources and identity
-
-| Kind | Acquisition | Mutation capability |
-| --- | --- | --- |
-| `tl1` | Registered installations via consistent SQLite snapshots and native transcripts | None |
-| `tl1-export` | Owner-produced canonical JSON | TL1 release contract only |
-| `conductor` | Consistent read-only SQLite snapshot transaction and schema inspection | None |
-| `codex` | Native rollout/session JSONL | None |
-| `claude` | Native project session JSONL | None |
-| `chatgpt-export` | User-provided `conversations.json` | None |
-| `canonical` | Documented interchange JSON | None |
-
-Deduplication uses account-scoped native IDs. Conductor aliases are retained as evidence-backed identity links after all adapters run; repeated identical prompts are never merged by content hash. The Conductor extractor inspects each row and selects the materially populated `content`, `full_message`, or `text` field, recording that decision in its evidence locator.
-
-No claim is made that ChatGPT desktop’s local cache is complete. ChatGPT is indexed from a user-provided supported export, and its health row makes that acquisition boundary visible.
-
-## Search, API, and MCP
-
-Exact file-change searches use `change_files`, distinct from conversation mentions. Repository, source, PR, task, and metrics queries use structured data. Natural-language results combine FTS with a deterministic on-device concept/feature embedding; no archive content leaves the machine. Extractive summaries cite retained source locators. Inference can be replaced or extended later without becoming a reclamation prerequisite.
-
-The HTTP service binds only to loopback and requires either a bearer token or its HttpOnly UI cookie. Core endpoints are:
-
-```text
-GET  /api/search?q=&repository=&source=&file=&pr=&limit=&offset=
-GET  /api/work/{workspace_id}
-GET  /api/conversation/{conversation_id}?limit=&offset=
-GET  /api/change/{change_set_id}
-GET  /api/trace?file=&pr=
-GET  /api/receipt/{receipt_or_operation_id}
-GET  /api/health
-GET  /api/health/carbon
-GET  /api/sources
-GET  /api/activity
-GET  /api/library/status
-GET  /api/health/drive
-GET  /api/mcp
-GET  /api/mcp/calls?limit=&offset=&tool=&status=
-POST /api/mcp/enabled
-POST /api/sources/{name}/sync
-POST /api/sources/{name}/enabled
-POST /api/sources/sync
-POST /api/query/{library|activity|usage|…}
-GET  /api/query/{library|activity|usage|…}/distinct?field=&q=&limit=
-GET  /api/query/{library|activity|usage|…}/field-stats?fields=a,b
-POST /api/query/{library|activity|usage|…}/aggregations
-```
-
-The query endpoints implement the `@pythia-software/query-table-*` 0.4.2 wire
-contract. Their allowlisted field definitions live in [`schemas`](schemas), and
-the same documents drive the React frontend and Go executor. Pharos uses a
-map-backed Go adapter because the upstream compiler currently emits PostgreSQL;
-the catalog remains SQLite and query values never become SQL text.
-
-Source controls only change ingestion participation or perform an explicit
-read-only refresh. They never delete source data.
-
-`alexandria mcp` exposes read-only conversation discovery in four layers:
-`search_conversations` returns compact ranked cards; `get_conversation_overview`
-returns an extractive preview with message references;
-`search_conversation_passages` finds matching passages within a conversation;
-and `get_conversation_messages` reads bounded windows or chunks of a long
-message. The discovery tools accept `max_output_tokens` as an approximate
-response budget (defaulting to 700–1,200 depending on the tool). Search cards
-include coverage and index freshness; conversation documents are generated
-locally and existing catalogs are backfilled on opening.
-
-The existing `search_work`, `get_work_detail`, `get_conversation_excerpt`,
-`get_change_set`, `trace`, `query_metrics`, and `get_receipt` tools remain
-available. `get_conversation_excerpt` is a compatibility alias for bounded
-message windows. MCP exposes no arbitrary deletion tool.
-
-The MCP page controls a shared enabled flag in the local catalog. Turning it off
-hides tools from new listings and rejects calls from already-connected clients;
-it does not alter another client's configuration. Tool-call history retains the
-latest 5,000 calls with an allowlisted, shortened argument summary and response
-metrics, never response bodies. The page provides per-tool totals and filters
-for tool and status. Output token counts are estimates from bytes.
-
-## Preservation, TL1 release, and scheduling (mothballed)
-
-Reclamation is mothballed. The Upcoming tab, protect/snooze controls, and the
-`upcoming`/`protect` commands are excluded from the default build, and the Go
-service refuses `preserve`, `reclaim`, `reconcile`, `tick`, and `worker`. The
-preservation package format, release state machine, and idle scheduler survive
-in the Python reference implementation and the owner contract
-([`docs/tl1-contract.md`](docs/tl1-contract.md)).
-[`docs/reclamation/README.md`](docs/reclamation/README.md) lists every parked
-piece and the steps to resume. The launchd templates under
-[`macos/launchd`](macos/launchd) belong to that parked scheduler.
-
-## Native macOS wrapper
-
-The quick-start launcher handles initialization, the absolute CLI path required
-by Finder, building, and opening the app:
+Pharos works best as a *library*: one folder that holds the app, its
+configuration, and everything it indexes. Put it on an external drive to carry
+your history between Macs, or anywhere you like on a single Mac.
 
 ```sh
-./launch.sh
+git clone https://github.com/gbdubs/alexandria.git pharos
+cd pharos
+macos/install-library.sh /Volumes/<your-drive>/Pharos
+open /Volumes/<your-drive>/Pharos/Pharos.app
 ```
 
-Use `./launch.sh --no-open` to initialize and build without opening the app.
+Rerunning `install-library.sh` later upgrades the app and leaves your
+configuration and catalog alone.
 
-The SwiftUI wrapper starts the loopback-only Go service embedded beside it and presents its authenticated interface in WebKit. The catalog, configuration, staging data, and preserved archive remain outside the app bundle.
+> Prefer a plain per-user install? `./launch.sh` builds and opens Pharos with
+> its configuration in `~/Library/Application Support/AI Work Archive/archive.toml`.
+> In that mode you add sources to `archive.toml` by hand; `alexandria probe` lists
+> what it finds. See [Configuration](docs/configuration.md).
 
-### Code signing
+### 2. Choose your sources
 
-`macos/build-app.sh` (and therefore `launch.sh`) signs what it builds: first the
-embedded service (`local.ai-work-archive.service`), then the bundle
-(`local.ai-work-archive`), both with the hardened runtime. The build fails if
-`codesign --verify --strict --deep` rejects the result.
+The first time you open the library on a Mac, Pharos checks the handful of
+places where Claude Code, Codex, and Conductor keep their conversations. It
+never scans the rest of your home folder. It shows what it found: how many
+sessions, how far back they go, and a warning when a tool is set to delete old
+transcripts. Nothing is indexed until you pick.
 
-| Variable | Effect |
-| --- | --- |
-| `PHAROS_CODESIGN_IDENTITY` | Keychain signing identity (name or SHA-1). Unset: ad-hoc signing. |
-| `PHAROS_HARDENED_RUNTIME=0` | Sign without the hardened runtime, for example to attach a debugger. |
-| `PHAROS_UNIVERSAL=1` | Build arm64 and x86_64 slices with `lipo` instead of the native architecture only. |
+![The "New Mac detected" panel listing Claude Code, Codex, and Conductor sources with session counts, sizes, and date ranges](docs/images/new-mac.png)
 
-A stable identity matters when Pharos runs from an external drive. macOS asks
-before an app reads files on a removable volume and records the answer against
-the app's designated requirement. The service is started by the app, so its
-file access counts as Pharos's. An ad-hoc signature's designated requirement is
-its cdhash, which changes whenever the code does, so a rebuilt Pharos can be
-asked again or silently lose access. With a keychain identity, the requirement
-is the bundle identifier plus the certificate, which survives rebuilds.
-Permissions are still stored per Mac, so expect one prompt on each Mac.
+ChatGPT keeps conversations in the cloud, so export your data from ChatGPT and
+point a source at the folder holding `conversations.json`.
 
-Without an Apple Development or Developer ID certificate, run
-`macos/create-signing-identity.sh` once. It creates a self-signed identity named
-"Pharos Local Code Signing" in your login keychain and trusts it for code
-signing only (macOS asks for your password). Then build with
-`PHAROS_CODESIGN_IDENTITY="Pharos Local Code Signing"`. A self-signed identity
-is for your own Macs only: Gatekeeper rejects it for downloaded copies, the key
-exists only on the Mac that created it, and replacing the certificate changes
-the designated requirement. The script header lists the details. Builds are not
-timestamped or notarized.
+### 3. Capture and index
 
-To inspect a signature:
+Pharos first *captures* your conversation files by copying them, unparsed, into
+the library, which takes seconds to minutes. Then it *indexes* them into a
+searchable catalog. You can close the dialog and both steps keep running in the
+background.
 
-```sh
-codesign -dvvv dist/Pharos.app                           # Identifier, Signature=adhoc or Authority=…, flags=…(runtime)
-codesign -d -r- dist/Pharos.app                          # designated requirement
-codesign -dvvv dist/Pharos.app/Contents/MacOS/alexandria
-codesign -d -r- dist/Pharos.app/Contents/MacOS/alexandria
-codesign --verify --strict --deep --verbose=2 dist/Pharos.app
-```
+![Capture progress per source: claude captured, codex copying, conductor waiting](docs/images/capture.png)
 
-An ad-hoc build reports `designated => cdhash H"…"`. A build signed with the
-self-signed identity should report
-`designated => identifier "local.ai-work-archive" and certificate leaf = H"…"`.
+Indexing can happen later, on any Mac. **Settings → Sources → Macs and
+captures** shows every Mac in the library and what still needs indexing.
 
-### UI feedback
+![Macs and captures: this MacBook Air's sources need indexing, while a Mac Studio's are indexed](docs/images/macs-and-captures.png)
 
-The app includes a dependency-free visual annotation tool. Choose **Annotate** in
-the bottom-right corner (or press Option-A), hover to identify an element, click
-it, and add a note. While hovering, press **Up Arrow** to select progressively
-higher parent elements or **Down Arrow** to return toward the original child.
-**Feedback** shows the saved annotations and copies a
-structured Markdown report containing selectors, bounds, visible or selected
-text, computed styles, view context, and a source-file hint suitable for pasting
-into a coding-agent conversation. Saved annotations and the note currently being
-composed survive app refreshes. They remain local in WebKit storage and are never
-uploaded by the archive service.
+On another Mac, plug in the drive and double-click **Add This Mac.command**
+beside the app, or just open the app and accept the panel again.
 
-## Development and verification
+### 4. Find past work
 
-For new interface icons, follow the [icon drawing and usage guide](docs/iconography.md).
+The **Library** tab searches every conversation by content, repository, file
+changed, or PR. Every table in Pharos is a query builder: pick columns, filter
+(including OR and NOT), sort on several keys, add metrics, and save the views you
+use often.
 
-```sh
-go test ./...
-go vet ./...
-(cd web && npm ci && npx tsc --noEmit && npm run build)
-(cd web && npm run check-bundle)
-./launch.sh --no-open
+A search matches whole words, related terms, and, with **Match inside words**,
+text inside a word in your conversations: `log_que` finds `catalog_query`. With
+**Show why each result matched**, each result shows its matching messages with
+the match highlighted, each a link into the conversation, and a score breakdown
+that says which of your words matched which words, and how much of a related
+match is hashing noise rather than shared words. Both are on by default.
 
-# Compatibility/reference suite during the transition
-PYTHONPATH=src python3 -m unittest discover -s tests -v
-python3 -m compileall -q src
-```
+Open a row to see its changed files, linked PRs, and conversations. Each
+conversation reads turn by turn: your prompt, the outcome, and every command,
+file read, and tool call in between, marked with how many tokens it added to the
+context. The rail on the right tracks context size and turns across the whole
+conversation, and you can click it to jump to any point.
 
-The Go tests cover stable cross-language IDs, source configuration, canonical
-ingestion, API compatibility, the query-table allowlist/filter/sort/pagination/
-aggregation contract, semantic search vectors, and native Conductor
-repository/PR/tool/sub-agent extraction. `macos/build-app.sh` reinstalls
-`web/` from its lockfile and rebuilds the frontend when npm is available, and
-otherwise embeds the checked-in bundle with a warning. `npm run check-bundle`
-rebuilds into a scratch directory and fails unless the checked-in
-`internal/archive/assets/query-tables.{js,css}` match `web/src` byte for byte;
-run it before committing frontend changes.
-The Python compatibility suite continues to cover the mothballed preservation and
-reclamation reference; `go vet -tags reclamation ./...` keeps the parked Go
-queue code compiling. The TL1 hook must maintain
-its own disposable integration tests because its repository concurrency
-protocol is owner-specific.
+![A conversation in Pharos: turns with prompt and outcome previews, an activity timeline of commands and reads with context-growth markers, and a context minimap on the right](docs/images/conversation.png)
 
-`go.mod` pins the Go toolchain (`toolchain go1.26.8`); an older local `go`
-downloads it automatically through the Go module proxy.
+### 5. See where the tokens go
+
+**Usage → Machine Tokens** breaks down tokens and API-equivalent cost by day,
+model, provider, repository, and agent. Costs use list prices on the day of use,
+so treat them as a lower bound.
+
+![The Usage tab: tokens per day split by model, with total cost, cost per month, and cost by provider](docs/images/usage.png)
+
+**Usage → Human Words** estimates how much you actually typed, as opposed to
+pasted, re-sent, or harness-injected text.
+
+![Human Words: words typed, words per message, and a breakdown of where user-turn text came from](docs/images/human-words.png)
+
+**Tools** joins every tool call to its result. It shows which calls fail, which
+are slow, and which results bloat the context window for the rest of the session.
+
+![The Tools tab: every tool call with its command, status, duration, and context cost, plus a calls-by-tool chart](docs/images/tools.png)
+
+### 6. Connect your agents (optional)
+
+The **MCP** tab gives you a copyable stdio configuration for your agent client.
+Your agents can then search and read past conversations. The tools are
+read-only, and one switch turns them off for every client.
+
+### 7. Unplug safely
+
+The drive badge in the header shows what Pharos is doing with the library right
+now. Use its **Eject** button instead of pulling the drive: Pharos stops its own
+work at a safe point, closes the library, and then ejects, or tells you why it
+can't.
+
+<p align="center">
+  <img src="docs/images/drive-panel.png" alt="The drive panel: syncing sources and updating the Library view, with an explanation and an Eject button" width="480">
+</p>
+
+For everything else (the CLI, the HTTP API, configuration keys, code signing,
+backups, and development), see the [technical overview](docs/technical-overview.md)
+and [configuration reference](docs/configuration.md).
+
+## Make it yours
+
+Pharos is built around one person's workflow: the agents I use, the questions
+I ask about my own work, and the way I move between Macs. Your setup is
+different, so **please fork it** and bend it to fit. Some starting points:
+
+- **Add a source.** Adapters live in `internal/archive/adapters.go`,
+  `adapter_conductor.go`, and `adapter_exports.go`, and the places Pharos looks
+  on a new Mac are in `internal/archive/probe.go`. The [canonical export
+  format](docs/canonical-export.md) is the easiest way to bring in anything else.
+- **Ask different questions.** The queryable fields for every table are defined
+  in [`schemas/`](schemas). The same files drive the React UI in `web/src` and
+  the Go query executor.
+- **Fix the prices.** Model prices live in `pricing/cost_changes.json`. See
+  [`pricing/README.md`](pricing/README.md).
+
+### A note on TL1
+
+You'll find code here that refers to a project called **TL1**: the `tl1` and
+`tl1-export` source kinds, the TL1 tab, `internal/archive/tl1_*.go`,
+`web/src/tl1.tsx`, and the mothballed workspace-reclamation contract in
+[`docs/tl1-contract.md`](docs/tl1-contract.md). TL1 is a private agent
+orchestration tool I use, and it isn't publicly available. That code is
+customized for my use cases. Pharos works without it: with no TL1 source
+configured, the TL1 tab stays hidden. Delete it from your fork, or use it as a
+template for integrating your own tools.
+
+A few internal names also predate the name Pharos. The CLI is still called
+`alexandria`, and configuration lives under `AI Work Archive`, so existing
+installs keep working.
+
+## Contact
+
+Found a bug, or have an idea for an addition? **[Open an issue](https://github.com/gbdubs/alexandria/issues)**.
+I'm happy to discuss new sources, new analyses, or anything you've built on a
+fork. You can also find me at [grady.dev](https://grady.dev).
+
+## License
+
+[MIT](LICENSE) © 2026 Grady Berry Ward
