@@ -233,7 +233,11 @@ func probeSources(home string, config Config, catalog *Catalog) ProbeReport {
 	timed("conductor", func() {
 		run.conductor(filepath.Join(home, "Library", "Application Support", "com.conductor.app"), "default location")
 	})
-	timed("tl1", func() { run.tl1(filepath.Join(home, ".tl1", "registry.json"), "default location") })
+	timed("tl1", func() {
+		if !run.tl1(filepath.Join(home, ".tl1", tl1RegistryFile), "default location") {
+			run.tl1(filepath.Join(home, ".tl1", tl1LegacyRegistryFile), "default location (TL1 before registry.json)")
+		}
+	})
 	environment := func(values map[string]string, from string) {
 		for _, name := range probeEnvNames {
 			value := values[name]
@@ -485,29 +489,30 @@ func sqliteTables(path string) (map[string]bool, error) {
 	return tables, nil
 }
 
-func (r *probeRun) tl1(registry, foundBy string) {
+// tl1 reports whether registry, either TL1 registry file, is a candidate.
+func (r *probeRun) tl1(registry, foundBy string) bool {
 	candidate, resolved := r.locate("tl1", registry, foundBy)
 	if candidate == nil {
-		return
+		return false
 	}
 	candidate.Unit, candidate.baseName = "installation", "tl1"
 	if candidate.Status == "found" {
 		r.inspectTL1(candidate, resolved)
 	}
 	r.keep(candidate)
+	return true
 }
 
 // inspectTL1 applies the TL1 adapter's installation rules without entering
 // protected folders: installations whose repository is in a temporary
 // directory (test runs) are skipped, as are those with missing files.
 func (r *probeRun) inspectTL1(candidate *ProbeCandidate, registry string) {
-	data, err := readSmallFile(registry)
-	var parsed struct {
-		Installations []map[string]any `json:"installations"`
-	}
-	if err == nil {
-		err = json.Unmarshal(data, &parsed)
-	}
+	installations, err := tl1RegistryRows(registry, func(path string) ([]byte, error) {
+		if protectedLocation(r.home, path) {
+			return nil, errProtected
+		}
+		return readSmallFile(path)
+	})
 	if err != nil {
 		candidate.Status, candidate.Readable, candidate.Detail = "unreadable", false, "Could not read the TL1 registry: "+err.Error()
 		return
@@ -527,7 +532,7 @@ func (r *probeRun) inspectTL1(candidate *ProbeCandidate, registry string) {
 	seen := map[string]bool{}
 	skipped, protected := 0, 0
 	var newest time.Time
-	for _, row := range parsed.Installations {
+	for _, row := range installations {
 		database, configPath, repository := expandPath(firstString(row["db_path"])), expandPath(firstString(row["config_path"])), expandPath(firstString(row["code_repo"]))
 		key := defaultString(row["installation_id"], database) + "\x1f" + database
 		if database == "" || configPath == "" || repository == "" || seen[key] || (!registryTemporary && within(filepath.Clean(repository), temporary)) {

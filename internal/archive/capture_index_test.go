@@ -483,13 +483,21 @@ func TestIndexReadsOneVersionWhileACaptureReplacesIt(t *testing.T) {
 	}
 }
 
+// A TL1 before registry.json listed the project in workspaces.json, with its
+// database and transcripts where they are here by default.
 func TestIndexTL1CaptureWithoutTheOriginalPaths(t *testing.T) {
+	for _, file := range []string{tl1RegistryFile, tl1LegacyRegistryFile} {
+		t.Run(file, func(t *testing.T) { testIndexTL1CaptureWithoutTheOriginalPaths(t, file) })
+	}
+}
+
+func testIndexTL1CaptureWithoutTheOriginalPaths(t *testing.T, file string) {
 	useHost(t, "host-a")
 	root := t.TempDir()
 	database := filepath.Join(root, "tl1", "project.db")
 	transcripts := filepath.Join(root, "tl1", "project", "transcripts")
 	repository := filepath.Join(root, "repo")
-	writeSourceFile(t, filepath.Join(repository, "tl1.json"), "{}")
+	writeSourceFile(t, filepath.Join(repository, "tl1.json"), `{"project_name":"project"}`)
 	transcript := filepath.Join(transcripts, "task-1", "attempt.jsonl")
 	writeSourceFile(t, transcript, claudeLine("tl1-session", "u1", "do the task", repository, 1))
 	db := openWritableSQLite(t, database)
@@ -500,9 +508,15 @@ func TestIndexTL1CaptureWithoutTheOriginalPaths(t *testing.T) {
 		"INSERT INTO task_attempts VALUES('attempt-1','task-1',1,'claude-x')",
 		"INSERT INTO transcript_summaries VALUES('attempt-1','attempt.jsonl')")
 	db.Close()
-	registry := filepath.Join(root, "tl1", "registry.json")
+	registry := filepath.Join(root, "tl1", file)
 	data, _ := json.Marshal(map[string]any{"installations": []map[string]string{{"installation_id": "abc123", "db_path": database,
 		"config_path": filepath.Join(repository, "tl1.json"), "code_repo": repository, "transcripts_dir": transcripts, "project_name": "project"}}})
+	installation := "abc123"
+	if file == tl1LegacyRegistryFile {
+		data, _ = json.Marshal(map[string]any{"workspaces": []map[string]string{{"project_name": "project",
+			"config_path": filepath.Join(repository, "tl1.json"), "code_repo": repository, "last_used": "2026-04-29T08:12:49"}}})
+		installation = database
+	}
 	writeSourceFile(t, registry, string(data))
 	config := captureTestConfig(t, SourceConfig{Name: "tl1", Kind: "tl1", Path: registry, Account: "local", Enabled: true})
 	runCapture(t, config)
@@ -519,7 +533,7 @@ func TestIndexTL1CaptureWithoutTheOriginalPaths(t *testing.T) {
 	}
 	var location, origin, writer, locator string
 	if err := catalog.DB.QueryRow(`SELECT w.location,c.origin,c.origin_host_id,m.evidence_locator FROM workspaces w JOIN conversations c ON c.workspace_id=w.id
-		JOIN messages m ON m.conversation_id=c.id WHERE w.source_id='abc123:task-1'`).Scan(&location, &origin, &writer, &locator); err != nil {
+		JOIN messages m ON m.conversation_id=c.id WHERE w.source_id=?`, installation+":task-1").Scan(&location, &origin, &writer, &locator); err != nil {
 		t.Fatal(err)
 	}
 	if location != repository || origin != transcript || writer != "host-a" || locator != transcript+":1" {

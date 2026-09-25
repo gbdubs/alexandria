@@ -44,25 +44,13 @@ func (a *tl1Adapter) installations() ([]tl1Installation, error) {
 	if a.view != nil {
 		return a.capturedInstallations(), nil
 	}
-	raw, err := readJSON(a.config.Path)
+	rows, err := tl1RegistryRows(a.config.Path, os.ReadFile)
 	if err != nil {
-		return nil, fmt.Errorf("cannot read TL1 registry %s: %w", a.config.Path, err)
-	}
-	object, ok := raw.(map[string]any)
-	if !ok {
-		return nil, fmt.Errorf("TL1 registry %s must contain an installations array", a.config.Path)
-	}
-	rows, ok := object["installations"].([]any)
-	if !ok {
-		return nil, fmt.Errorf("TL1 registry %s must contain an installations array", a.config.Path)
+		return nil, err
 	}
 	result := []tl1Installation{}
 	seen := map[string]bool{}
-	for _, rawRow := range rows {
-		row := mapValue(rawRow)
-		if row == nil {
-			continue
-		}
+	for _, row := range rows {
 		database, configPath, repository := expandPath(firstString(row["db_path"])), expandPath(firstString(row["config_path"])), expandPath(firstString(row["code_repo"]))
 		if database == "" || configPath == "" || repository == "" {
 			continue
@@ -82,6 +70,102 @@ func (a *tl1Adapter) installations() ([]tl1Installation, error) {
 		result = append(result, tl1Installation{ID: id, Database: database, Repository: repository, Transcripts: expandPath(firstString(row["transcripts_dir"])), Project: firstString(row["project_name"]), ConfigPath: configPath})
 	}
 	return result, nil
+}
+
+// TL1 lists its installations in registry.json. Releases before it kept
+// workspaces.json instead, which names each project's tl1.json and code
+// repository, and TL1 goes on listing a project from it until the project is
+// next used and registered.
+const (
+	tl1RegistryFile       = "registry.json"
+	tl1LegacyRegistryFile = "workspaces.json"
+)
+
+// tl1RegistryRows returns the installations TL1 lists in the state directory
+// holding registry, which may be either file: registry.json's installations,
+// then each project in workspaces.json that none of them registered. A legacy
+// project has no installation ID, so the adapter identifies it by its
+// database. read reads a file, or fails for one that must not be opened.
+func tl1RegistryRows(registry string, read func(string) ([]byte, error)) ([]map[string]any, error) {
+	object, err := readTL1Registry(registry, read)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read TL1 registry %s: %w", registry, err)
+	}
+	installations, current := object["installations"].([]any)
+	workspaces, legacy := object["workspaces"].([]any)
+	if !current && !legacy {
+		return nil, fmt.Errorf("TL1 registry %s must contain an installations or workspaces array", registry)
+	}
+	dir := filepath.Dir(registry)
+	// The other file is optional, and TL1 itself ignores it when unreadable.
+	if !current {
+		sibling, _ := readTL1Registry(filepath.Join(dir, tl1RegistryFile), read)
+		installations, _ = sibling["installations"].([]any)
+	} else if !legacy {
+		sibling, _ := readTL1Registry(filepath.Join(dir, tl1LegacyRegistryFile), read)
+		workspaces, _ = sibling["workspaces"].([]any)
+	}
+	// TL1 writes resolved paths to both files, so they compare as written;
+	// resolving them again could reach into folders the probe must not.
+	rows := []map[string]any{}
+	configs, databases := map[string]bool{}, map[string]bool{}
+	for _, value := range installations {
+		if row := mapValue(value); row != nil {
+			rows = append(rows, row)
+			configs[filepath.Clean(expandPath(firstString(row["config_path"])))] = true
+			databases[filepath.Clean(expandPath(firstString(row["db_path"])))] = true
+		}
+	}
+	for _, value := range workspaces {
+		entry := mapValue(value)
+		configPath := expandPath(firstString(entry["config_path"]))
+		if configPath == "" || configs[filepath.Clean(configPath)] {
+			continue
+		}
+		row := tl1LegacyRow(dir, entry, configPath, read)
+		// Registering a legacy project claims its database for the new
+		// installation.
+		if row != nil && !databases[firstString(row["db_path"])] {
+			rows = append(rows, row)
+		}
+	}
+	return rows, nil
+}
+
+func readTL1Registry(path string, read func(string) ([]byte, error)) (map[string]any, error) {
+	data, err := read(path)
+	if err != nil {
+		return nil, err
+	}
+	var object map[string]any
+	return object, json.Unmarshal(data, &object)
+}
+
+// tl1LegacyRow is an installation row for a workspaces.json project. Its
+// tl1.json may set db_path and transcripts_dir, relative to itself; otherwise
+// they are <project>.db and <project>/transcripts in TL1's state directory.
+func tl1LegacyRow(dir string, entry map[string]any, configPath string, read func(string) ([]byte, error)) map[string]any {
+	config := map[string]any{}
+	if data, err := read(configPath); err == nil {
+		_ = json.Unmarshal(data, &config)
+	}
+	project := defaultString(config["project_name"], firstString(entry["project_name"]))
+	if project == "" {
+		return nil
+	}
+	configured := func(key, fallback string) string {
+		value := firstString(config[key])
+		if value == "" {
+			return fallback
+		}
+		if value = expandPath(value); !filepath.IsAbs(value) {
+			value = filepath.Join(filepath.Dir(configPath), value)
+		}
+		return filepath.Clean(value)
+	}
+	return map[string]any{"project_name": project, "config_path": configPath, "code_repo": entry["code_repo"],
+		"db_path":         configured("db_path", filepath.Join(dir, project+".db")),
+		"transcripts_dir": configured("transcripts_dir", filepath.Join(dir, project, "transcripts"))}
 }
 
 // capturedInstallations reads the installations a capture holds. Its manifest

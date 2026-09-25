@@ -315,7 +315,7 @@ storage, other apps' containers, Mail, Messages, and other volumes.
 | Claude Code | `$CLAUDE_CONFIG_DIR/projects`, `~/.claude/projects`, `~/.config/claude/projects`, and any `~/.claude*/projects` (for example `~/.claude-work`) that holds transcripts |
 | Codex | `$CODEX_HOME` and `~/.codex`, when they have `sessions/` or `archived_sessions/` |
 | Conductor | `~/Library/Application Support/com.conductor.app`, when a database at its top level has session and message tables (only table names are read) |
-| TL1 | `~/.tl1/registry.json`; installations in a temporary directory or with missing files are skipped, as the TL1 adapter does |
+| TL1 | `~/.tl1/registry.json`, or for TL1 releases before it `~/.tl1/workspaces.json`; installations in a temporary directory or with missing files are skipped, as the TL1 adapter does |
 | ChatGPT | nothing on disk: export your data from ChatGPT and add a source for the folder holding `conversations.json` |
 
 The app and its service do not inherit the shell's environment, so Pharos also
@@ -1079,6 +1079,15 @@ saved views, paging, and aggregate metrics by tool or time period, including
 response sizes, errors, and truncation.
 
 The native `tl1` source is read-only and discovers currently registered installations.
+Its `path` names either TL1 registry file in TL1's state directory (`~/.tl1`).
+Pharos reads both, as TL1 does: every installation in `registry.json`, then
+each project in `workspaces.json`, which TL1 releases before `registry.json`
+kept, that no installation has registered yet. A `workspaces.json` project's
+database and transcripts are where its `tl1.json` puts them (`db_path`,
+`transcripts_dir`), by default `<project>.db` and `<project>/transcripts` beside
+the registry. Such a project has no installation ID, so Pharos identifies it by
+its database path. When a later TL1 registers the project, it gives it a new
+installation ID, and Pharos then indexes its tasks again under that ID.
 
 ### Mothballed reclamation keys
 
