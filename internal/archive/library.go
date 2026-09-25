@@ -33,7 +33,9 @@ type libraryColumn struct{ name, expr string }
 // libraryColumns are evaluated per workspace with the workspace aliased as w.
 var libraryColumns = []libraryColumn{
 	{"conversation_count", "(SELECT COUNT(*) FROM conversations cx WHERE cx.workspace_id=w.id)"},
-	{"turn_count", "(SELECT COUNT(*) FROM conversations tx JOIN messages tm ON tm.conversation_id=tx.id WHERE tx.workspace_id=w.id AND tm.role='user' AND tm.kind='message')"},
+	// A unary + on role keeps a workspace's messages found through its
+	// conversations, not messages_prose_idx (see libraryPreviewSelect).
+	{"turn_count", "(SELECT COUNT(*) FROM conversations tx JOIN messages tm ON tm.conversation_id=tx.id WHERE tx.workspace_id=w.id AND +tm.role='user' AND tm.kind='message')"},
 	{"changed_file_count", "(SELECT COUNT(*) FROM change_sets csx JOIN change_files cfx ON cfx.change_set_id=csx.id WHERE csx.workspace_id=w.id)"},
 	{"token_count", `COALESCE(
 		(SELECT MAX(mx.value) FROM metrics mx WHERE mx.workspace_id=w.id AND mx.name='total_tokens'),
@@ -458,14 +460,22 @@ func (c *Catalog) libraryPage(ctx context.Context, rows []map[string]any) ([]map
 	return page, c.attachLibraryPreviews(ctx, page, args)
 }
 
+// libraryPreviewSelect reads the first request and latest response of each
+// workspace filter selects. The unary + on role keeps SQLite from walking
+// messages_prose_idx, which orders every prose message in the catalog by
+// time, until it happens on one of this workspace's.
+func libraryPreviewSelect(filter string) string {
+	return `SELECT w.id,
+		(SELECT fm.text FROM conversations fc JOIN messages fm ON fm.conversation_id=fc.id WHERE fc.workspace_id=w.id AND +fm.role='user' AND fm.kind='message' ORDER BY fm.created_at,fm.id LIMIT 1) first_input,
+		(SELECT lm.text FROM conversations lc JOIN messages lm ON lm.conversation_id=lc.id WHERE lc.workspace_id=w.id AND +lm.role='assistant' AND lm.kind='message' ORDER BY lm.created_at DESC,lm.id DESC LIMIT 1) last_response
+		FROM workspaces w WHERE ` + filter
+}
+
 // attachLibraryPreviews adds the first request and latest response text to
 // page rows, whose workspace IDs are ids. They are large, so only displayed
 // rows carry them.
 func (c *Catalog) attachLibraryPreviews(ctx context.Context, page []map[string]any, ids []any) error {
-	previews, err := queryMapsContext(ctx, c.DB, `SELECT w.id,
-		(SELECT fm.text FROM conversations fc JOIN messages fm ON fm.conversation_id=fc.id WHERE fc.workspace_id=w.id AND fm.role='user' AND fm.kind='message' ORDER BY fm.created_at,fm.id LIMIT 1) first_input,
-		(SELECT lm.text FROM conversations lc JOIN messages lm ON lm.conversation_id=lc.id WHERE lc.workspace_id=w.id AND lm.role='assistant' AND lm.kind='message' ORDER BY lm.created_at DESC,lm.id DESC LIMIT 1) last_response
-		FROM workspaces w WHERE w.id IN (`+placeholders(len(ids))+`)`, ids...)
+	previews, err := queryMapsContext(ctx, c.DB, libraryPreviewSelect("w.id IN ("+placeholders(len(ids))+")"), ids...)
 	if err != nil {
 		return err
 	}

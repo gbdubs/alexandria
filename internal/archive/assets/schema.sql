@@ -143,6 +143,8 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS messages_conversation_idx ON messages(conversation_id, created_at);
 -- Serves the human-authorship rebuild, which reads prose turns by role in send order.
+-- A query about one conversation or workspace that also filters on role would
+-- take it too and read every prose message in the catalog; write +role there.
 CREATE INDEX IF NOT EXISTS messages_prose_idx ON messages(role, created_at) WHERE kind='message';
 -- Derived per user message by the authorship rebuild; see docs/human-authorship.md.
 CREATE TABLE IF NOT EXISTS message_authorship (

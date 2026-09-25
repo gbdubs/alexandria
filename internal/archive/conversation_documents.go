@@ -7,12 +7,23 @@ import (
 	"strings"
 )
 
+// documentInitiationQuery and documentOutcomeQuery read a conversation's
+// first request and last reply. The unary + keeps role out of index choice:
+// through messages_prose_idx, SQLite would read every prose message in the
+// catalog to find this conversation's.
+const (
+	documentInitiationQuery = `SELECT m.id,substr(m.text,1,601) text FROM messages m WHERE m.conversation_id=?
+		AND +m.role IN ('user','agent') AND m.kind='message' AND m.text<>''
+		ORDER BY m.source_order IS NULL,m.source_order,m.created_at,m.id LIMIT 1`
+	documentOutcomeQuery = `SELECT m.id,substr(m.text,1,601) text FROM messages m WHERE m.conversation_id=?
+		AND +m.role='assistant' AND m.kind='message' AND m.text<>''
+		ORDER BY m.source_order IS NULL DESC,m.source_order DESC,m.created_at DESC,m.id DESC LIMIT 1`
+)
+
 // Conversation documents are small, extractive discovery aids. The original
 // messages remain the source of truth and are fetched only on demand.
 func upsertConversationDocument(tx *sql.Tx, conversationID string) error {
-	rows, err := queryMaps(tx, `SELECT m.id,substr(m.text,1,601) text FROM messages m WHERE m.conversation_id=?
-		AND m.role IN ('user','agent') AND m.kind='message' AND m.text<>''
-		ORDER BY m.source_order IS NULL,m.source_order,m.created_at,m.id LIMIT 1`, conversationID)
+	rows, err := queryMaps(tx, documentInitiationQuery, conversationID)
 	if err != nil {
 		return err
 	}
@@ -21,9 +32,7 @@ func upsertConversationDocument(tx *sql.Tx, conversationID string) error {
 		initiation = clipText(firstString(rows[0]["text"]), 600)
 		initiationID = firstString(rows[0]["id"])
 	}
-	rows, err = queryMaps(tx, `SELECT m.id,substr(m.text,1,601) text FROM messages m WHERE m.conversation_id=?
-		AND m.role='assistant' AND m.kind='message' AND m.text<>''
-		ORDER BY m.source_order IS NULL DESC,m.source_order DESC,m.created_at DESC,m.id DESC LIMIT 1`, conversationID)
+	rows, err = queryMaps(tx, documentOutcomeQuery, conversationID)
 	if err != nil {
 		return err
 	}
