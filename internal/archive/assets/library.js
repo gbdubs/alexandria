@@ -8,7 +8,7 @@
 (() => {
   'use strict';
   const CSS = `
-.pharos-drive{display:flex;align-items:center;gap:7px;min-width:0;max-width:190px;height:38px;padding:0 10px;border:1px solid #f3ebdc30;border-radius:8px;background:#ffffff0f;color:var(--mast-ink,#f3ebdc);font-size:13px;white-space:nowrap}
+.pharos-drive{display:flex;align-items:center;gap:7px;min-width:0;max-width:190px;height:32px;box-sizing:border-box;padding:0 10px;border:1px solid #f3ebdc30;border-radius:4px;background:#ffffff0f;color:var(--mast-ink,#f3ebdc);font-size:var(--fs-md,13px);line-height:1;white-space:nowrap}
 .pharos-drive:hover,.pharos-drive[aria-expanded="true"]{border-color:var(--mast-brass,#d4a857);color:#f1d690}
 .pharos-drive-name{flex:0 1 auto;min-width:2.5em;font-weight:650;overflow:hidden;text-overflow:ellipsis}
 .pharos-drive-state{flex:none;color:var(--mast-muted,#c3cebc)}
