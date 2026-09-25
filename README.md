@@ -104,6 +104,13 @@ changed, or PR. Every table in Pharos is a query builder: pick columns, filter
 (including OR and NOT), sort on several keys, add metrics, and save the views you
 use often.
 
+A search matches whole words, related terms, and, with **Match inside words**,
+text inside a word in your conversations: `log_que` finds `catalog_query`. With
+**Show why each result matched**, each result shows its matching messages with
+the match highlighted, each a link into the conversation, and a score breakdown
+that says which of your words matched which words, and how much of a related
+match is hashing noise rather than shared words. Both are on by default.
+
 Open a row to see its changed files, linked PRs, and conversations. Each
 conversation reads turn by turn: your prompt, the outcome, and every command,
 file read, and tool call in between, marked with how many tokens it added to the

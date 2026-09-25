@@ -124,10 +124,17 @@ async function responseJSON<T>(response: Response): Promise<T> {
   return body as T;
 }
 
-function makeTransport(dataset: Dataset, semanticSearch = ""): Transport<Row> {
+type LibrarySearch = { text: string; substring: boolean; explain: boolean };
+
+function makeTransport(dataset: Dataset, search?: LibrarySearch): Transport<Row> {
   const endpoint = (suffix = "") => {
     const params = new URLSearchParams();
-    if (semanticSearch) params.set("search", semanticSearch);
+    if (search?.text) {
+      params.set("search", search.text);
+      if (search.substring) params.set("substring", "1");
+      // Only row pages carry explanations.
+      if (search.explain && !suffix) params.set("explain", "1");
+    }
     const query = params.toString();
     return `/api/query/${dataset}${suffix}${query ? `?${query}` : ""}`;
   };
@@ -175,10 +182,12 @@ const renderers: RenderRegistry<Row> = {
     return defaultRenderers.number(context);
   },
   work_title({ value, row }: CellContext<Row>) {
-    return <button className="qt-work-link" title={String(value ?? "")} onClick={(event) => {
+    const link = <button className="qt-work-link" title={String(value ?? "")} onClick={(event) => {
       event.stopPropagation();
       window.alexandriaOpenDetail?.(String(row.workspace_id ?? row.id));
     }}>{String(value ?? "Untitled work")}</button>;
+    // A searched Library row says under its title why it matched.
+    return row.why ? <div className="qt-work-why">{link}<WhyChips row={row} /></div> : link;
   },
   pull_requests({ value, row }: CellContext<Row>) {
     const prs = pullRequests(row);
@@ -287,9 +296,9 @@ const metricRenderers: RenderRegistry<Row> = {
 
 // header renders between the filters and the metric panels, so a chart there
 // can follow the table's filters.
-function QuerySurface({ dataset, search = "", libraryView = "table", trailing, header }: { dataset: Dataset; search?: string; libraryView?: LibraryView; trailing?: (row: Row, api: QueryTableApi<Row>) => React.ReactNode; header?: (api: QueryTableApi<Row>) => React.ReactNode }) {
+function QuerySurface({ dataset, search, libraryView = "table", trailing, header }: { dataset: Dataset; search?: LibrarySearch; libraryView?: LibraryView; trailing?: (row: Row, api: QueryTableApi<Row>) => React.ReactNode; header?: (api: QueryTableApi<Row>) => React.ReactNode }) {
   const schema = schemas[dataset];
-  const transport = useMemo(() => makeTransport(dataset, search), [dataset, search]);
+  const transport = useMemo(() => makeTransport(dataset, search), [dataset, search?.text, search?.substring, search?.explain]);
   const storage = useMemo(() => localStorageAdapter(), []);
   const api = useQueryTable<Row>({ schema, transport, storage, debounceMs: 100 });
   const apiRef = useRef(api);
@@ -431,6 +440,7 @@ function ConversationResultCard({ row }: { row: Row }) {
         <button type="button" onClick={() => setBrowse((value) => !value)} disabled={!turnCount} aria-expanded={browse}>{browse ? "Close turn browser" : "Browse turns"}</button>
       </div>
     </div>
+    {row.why ? <WhyInline row={row} /> : null}
     {firstInput || latestResponse ? <div className="conversation-result-preview">
       {firstInput ? <ResultMessage label="First ask" message={firstInput} kind="human" /> : null}
       {latestResponse ? <ResultMessage label="Latest response" message={latestResponse} kind="assistant" /> : null}
@@ -447,10 +457,41 @@ function ConversationResults({ api }: { api: QueryTableApi<Row> }) {
   </div>;
 }
 
+// Library search options live in the URI; both default on, so a URI names
+// only an option turned off.
+function librarySearchFlags(params: URLSearchParams) {
+  return { substring: params.get("substring") !== "0", explain: params.get("why") !== "0" };
+}
+
+type SubstringStatus = { ready: boolean; done: number; total: number };
+
+// While the substring index catches up on older conversations, say how far
+// it has got, so missing substring matches are not mistaken for none.
+function useSubstringStatus(active: boolean): SubstringStatus | null {
+  const [status, setStatus] = useState<SubstringStatus | null>(null);
+  useEffect(() => {
+    if (!active || status?.ready) return;
+    let stopped = false;
+    const load = async () => {
+      try {
+        const body = await responseJSON<{ substring: SubstringStatus }>(await fetch("/api/search/status"));
+        if (!stopped) setStatus(body.substring);
+      } catch { /* the hint is optional */ }
+    };
+    void load();
+    const timer = window.setInterval(() => void load(), 10_000);
+    return () => { stopped = true; window.clearInterval(timer); };
+  }, [active, status?.ready]);
+  return status;
+}
+
 function LibraryPage() {
   const [draft, setDraft] = useState(() => new URLSearchParams(location.search).get("search") ?? "");
   const [search, setSearch] = useState(() => new URLSearchParams(location.search).get("search") ?? "");
+  const [flags, setFlags] = useState(() => librarySearchFlags(new URLSearchParams(location.search)));
   const [view, setView] = useState<LibraryView>(() => new URLSearchParams(location.search).get("view") === "conversation" ? "conversation" : "table");
+  const [whyRow, setWhyRow] = useState<Row | null>(null);
+  const substringStatus = useSubstringStatus(Boolean(search) && flags.substring);
   useEffect(() => {
     clearLibrarySearch = () => { setDraft(""); setSearch(""); updateURI("search", ""); };
     return () => { clearLibrarySearch = undefined; };
@@ -460,6 +501,7 @@ function LibraryPage() {
       const params = new URLSearchParams(location.search);
       const nextSearch = params.get("search") ?? "";
       setDraft(nextSearch); setSearch(nextSearch);
+      setFlags(librarySearchFlags(params));
       setView(params.get("view") === "conversation" ? "conversation" : "table");
     };
     window.addEventListener("alexandria:route", restore);
@@ -467,18 +509,153 @@ function LibraryPage() {
   }, []);
   function submit(event: FormEvent) { event.preventDefault(); const next = draft.trim(); setSearch(next); updateURI("search", next); }
   function chooseView(next: LibraryView) { setView(next); updateURI("view", next === "conversation" ? next : ""); }
+  function setFlag(name: "substring" | "explain", value: boolean) {
+    setFlags(previous => ({ ...previous, [name]: value }));
+    updateURI(name === "explain" ? "why" : name, value ? "" : "0");
+  }
+  const librarySearch = useMemo(() => ({ text: search, ...flags }), [search, flags.substring, flags.explain]);
+  const kinds = ["whole words", ...(flags.substring ? ["text inside words"] : []), "related terms"];
   return <div className="alexandria-query-page">
     <div className="view-heading library-heading"><div><h1>Find past work</h1></div><div className="library-view-toggle" role="group" aria-label="Library result view">
       <button type="button" className={view === "table" ? "active" : ""} aria-pressed={view === "table"} onClick={() => chooseView("table")}>Table</button>
       <button type="button" className={view === "conversation" ? "active" : ""} aria-pressed={view === "conversation"} onClick={() => chooseView("conversation")}>Conversations</button>
     </div></div>
     <form className="semantic-search" onSubmit={submit}>
-      <input type="search" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Bug, approach, file, or outcome…" aria-label="Semantic and full-text search" />
+      <input type="search" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Bug, approach, file, or outcome…" aria-label="Search text and related terms" />
       <button type="submit">Search library</button>
     </form>
-    {search ? <p className="muted semantic-hint">Semantic result set for “{search}”. Query-table filters apply within these matches.</p> : null}
-    <QuerySurface dataset="library" search={search} libraryView={view} />
+    <div className="search-options" role="group" aria-label="Search options">
+      <label title="Also match three or more characters inside a word in conversation messages: log_que finds catalog_query. Tool output is matched by whole words only."><input type="checkbox" checked={flags.substring} onChange={event => setFlag("substring", event.target.checked)} /> Match inside words</label>
+      <label title="Show which messages, words, and fields put each result in the list, and how its relevance was scored."><input type="checkbox" checked={flags.explain} onChange={event => setFlag("explain", event.target.checked)} /> Show why each result matched</label>
+    </div>
+    {search ? <p className="muted semantic-hint">Results for “{search}” by {kinds.slice(0, -1).join(", ")} and {kinds[kinds.length - 1]}. Query-table filters apply within these matches.
+      {flags.substring && substringStatus && !substringStatus.ready ? <> <span className="search-index-note">Text inside words is still being indexed ({substringStatus.done.toLocaleString()} of {substringStatus.total.toLocaleString()} conversations), so some of those matches are missing.</span></> : null}</p> : null}
+    <WhyContext.Provider value={setWhyRow}>
+      <QuerySurface dataset="library" search={librarySearch} libraryView={view} />
+    </WhyContext.Provider>
+    {whyRow?.why ? <WhyDialog row={whyRow} onClose={() => setWhyRow(null)} /> : null}
   </div>;
+}
+
+type Segment = { text: string; match?: boolean };
+type MatchMessage = { message_id: string; conversation_id: string; role: string; kind: string; segments: Segment[] };
+type TextWhy = { rank: number; count: number; terms: string[]; ignored?: string[]; messages: MatchMessage[] };
+type RelatedTerm = { query: string; matched: string[]; via: string; concept?: string; value: number; fields: string[] };
+type RelatedWhy = { cosine: number; threshold: number; weight: number; exact: boolean; signal: number; noise: number; scattered: number; terms: RelatedTerm[]; fields: { label: string; value: number }[] };
+type Why = { score: number; scan: number; parts: { kind: "text" | "related"; value: number; weight: number }[]; text?: TextWhy; substring?: TextWhy; related?: RelatedWhy };
+
+const WhyContext = React.createContext<(row: Row) => void>(() => {});
+
+const score = (value: number) => value.toFixed(3);
+
+// A related match that is mostly hash collisions says little on its own.
+const noisy = (related?: RelatedWhy) => Boolean(related && related.noise > related.signal);
+
+function relatedLabel(term: RelatedTerm): string {
+  const matched = term.matched.filter(word => word !== term.query);
+  if (term.via === "word" || !matched.length) return term.query;
+  return `${term.query} ≈ ${matched.slice(0, 2).join(", ")}`;
+}
+
+const viaLabels: Record<string, string> = { word: "Same word", stem: "Same word stem", phrase: "Same word pair", letters: "Similar spelling" };
+const viaLabel = (term: RelatedTerm) => term.via === "concept" ? `Related concept “${term.concept}”` : viaLabels[term.via] ?? term.via;
+
+function messageLabel(message: MatchMessage): string {
+  if (message.kind === "message") return message.role === "user" ? "You" : message.role === "assistant" ? "Agent" : message.role;
+  return ({ tool_result: "Tool output", tool_call: "Tool call", result: "Result", delegation: "Delegation", delegation_result: "Sub-agent result", metadata: "Metadata" } as Record<string, string>)[message.kind] ?? message.kind;
+}
+
+// Opens the work at the message, as the transcript's own links do.
+function openMessage(row: Row, message: MatchMessage) {
+  const params = new URLSearchParams({ conversation: message.conversation_id, message: message.message_id });
+  history.pushState(null, "", `/work/${encodeURIComponent(String(row.id))}?${params}`);
+  (window as unknown as { routeFromLocation?: () => void }).routeFromLocation?.();
+}
+
+function WhyChips({ row }: { row: Row }) {
+  const open = React.useContext(WhyContext);
+  const why = row.why as Why | undefined;
+  if (!why) return null;
+  const top = why.related?.terms[0];
+  return <button type="button" className="why-chips" title="Show why this work matched" onClick={event => { event.stopPropagation(); open(row); }}>
+    {why.text ? <span className="why-chip text">Words ×{why.text.count}</span> : null}
+    {why.substring ? <span className="why-chip substring">Inside words ×{why.substring.count}</span> : null}
+    {why.related ? <span className={`why-chip related ${noisy(why.related) ? "weak" : ""}`}>{top ? relatedLabel(top) : "Related"}{noisy(why.related) ? " · weak" : ""}</span> : null}
+  </button>;
+}
+
+function Snippet({ message }: { message: MatchMessage }) {
+  return <span className="why-snippet">{message.segments.map((segment, index) => segment.match ? <mark key={index}>{segment.text}</mark> : <React.Fragment key={index}>{segment.text}</React.Fragment>)}</span>;
+}
+
+function MatchList({ row, matches, limit }: { row: Row; matches: TextWhy; limit?: number }) {
+  return <ul className="why-messages">{matches.messages.slice(0, limit).map(message => <li key={message.message_id}>
+    <button type="button" className="why-open" title="Open this message in the conversation" onClick={() => openMessage(row, message)}>{messageLabel(message)}</button>
+    <Snippet message={message} />
+  </li>)}</ul>;
+}
+
+// The card shows the best matching message and the strongest related terms;
+// the dialog shows everything.
+function WhyInline({ row }: { row: Row }) {
+  const open = React.useContext(WhyContext);
+  const why = row.why as Why;
+  const matches = why.text ?? why.substring;
+  return <div className="why-inline">
+    <div className="why-inline-head"><span className="result-message-label">Why this matched</span><WhyChips row={row} /></div>
+    {matches ? <MatchList row={row} matches={matches} limit={1} /> : null}
+    {!matches && why.related ? <p className="why-inline-related">{noisy(why.related) ? "Weak similarity, mostly hashing noise" : "Related terms"}{why.related.terms.length ? `: ${why.related.terms.slice(0, 4).map(relatedLabel).join(" · ")}` : ""}</p> : null}
+    <button type="button" className="why-details-link" onClick={() => open(row)}>Score details</button>
+  </div>;
+}
+
+function TextSection({ row, title, matches, scan, note }: { row: Row; title: string; matches: TextWhy; scan: number; note: string }) {
+  return <section className="why-section">
+    <h3>{title}</h3>
+    <p className="muted">{note} This work has {matches.count.toLocaleString()} of them{matches.count >= 3 ? " (the best three are shown)" : ""}, counting the {scan.toLocaleString()} best matches the search reads. Its best match ranks it #{matches.rank} among works.
+      {matches.ignored?.length ? ` Terms under three characters (${matches.ignored.join(", ")}) can't be matched inside words and were ignored.` : ""}</p>
+    <MatchList row={row} matches={matches} />
+  </section>;
+}
+
+function WhyDialog({ row, onClose }: { row: Row; onClose: () => void }) {
+  const why = row.why as Why;
+  const related = why.related;
+  useEffect(() => {
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [onClose]);
+  const text = why.parts.find(part => part.kind === "text");
+  const relatedPart = why.parts.find(part => part.kind === "related");
+  const lexicalRank = Math.min(...[why.text?.rank, why.substring?.rank].filter((rank): rank is number => Boolean(rank)));
+  return <div className="mcp-dialog-backdrop" onClick={onClose}><div className="mcp-dialog why-dialog" role="dialog" aria-modal="true" aria-label="Why this work matched" onClick={event => event.stopPropagation()}>
+    <div className="mcp-card-heading"><div><h2>{String(row.title ?? "Untitled work")}</h2><p className="muted">Why it matched</p></div><button type="button" onClick={onClose}>Close</button></div>
+    <section className="why-section">
+      <h3>Relevance {score(why.score)}</h3>
+      <div className="why-bar" aria-hidden="true">{why.parts.map(part => <i key={part.kind} className={part.kind} style={{ width: `${(part.value / Math.max(why.score, 1e-9)) * 100}%` }} />)}</div>
+      <ul className="why-formula">
+        {text ? <li><i className="text" />Text match: best rank #{lexicalRank} → 1/{lexicalRank} × {text.weight} = {score(text.value)}</li> : null}
+        {relatedPart && related ? <li><i className="related" />Related terms: similarity {score(related.cosine)} × {relatedPart.weight} = {score(relatedPart.value)}</li> : null}
+      </ul>
+    </section>
+    {why.text ? <TextSection row={row} title="Whole words" matches={why.text} scan={why.scan} note={`Messages holding every word of “${why.text.terms.join(" ")}”.`} /> : null}
+    {why.substring ? <TextSection row={row} title="Text inside words" matches={why.substring} scan={why.scan} note={`Conversation messages containing ${why.substring.terms.map(term => `“${term}”`).join(" and ")} anywhere, even mid-word.`} /> : null}
+    {related ? <section className="why-section">
+      <h3>Related terms</h3>
+      <p className="muted">Similarity compares hashed words, word pairs, and three-letter pieces of your query with this work's title, purpose, outcome, first ask, last reply, and failure excerpts. It counts above {related.threshold}.</p>
+      {noisy(related) ? <p className="why-warning">Most of this similarity ({score(related.noise)} of {score(related.cosine)}) comes from unrelated words that share hash slots with yours, not from shared words. Treat this match as weak.</p> : null}
+      {related.terms.length ? <table className="why-terms"><thead><tr><th>Your query</th><th>Matched</th><th>How</th><th>Where</th><th className="num">Adds</th></tr></thead><tbody>
+        {related.terms.map(term => <tr key={`${term.via}:${term.query}`}><td>{term.query}</td><td>{term.matched.join(", ") || "—"}</td><td>{viaLabel(term)}</td><td>{term.fields.join(", ")}</td><td className="num">{score(term.value)}</td></tr>)}
+      </tbody></table> : <p className="muted">No word, pair, or spelling of your query appears in this work's indexed text.</p>}
+      <ul className="why-formula">
+        <li>Shared words and pieces: {score(related.signal)}{related.scattered ? ` (${score(related.scattered)} from three-letter pieces of unlike words)` : ""}</li>
+        <li>Hash collisions: {score(related.noise)}</li>
+        {related.fields.length ? <li>By field: {related.fields.map(field => `${field.label} ${score(field.value)}`).join(" · ")}</li> : null}
+      </ul>
+      {related.exact ? null : <p className="muted">This work's indexed text has changed since it was scored, so the breakdown is approximate. Syncing the source again refreshes it.</p>}
+    </section> : null}
+  </div></div>;
 }
 
 type SyncRun = {

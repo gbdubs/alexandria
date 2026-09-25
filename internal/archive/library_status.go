@@ -248,6 +248,12 @@ func (s *Server) libraryActivities() []libraryActivity {
 			Detail: "Rebuilding human authorship for Usage", Writes: true,
 			OnEject: "Stops; it runs again the next time Usage is opened."})
 	}
+	if progress, err := s.Catalog.substringIndexProgress(context.Background()); err == nil && !progress.Ready && progress.Total > 0 {
+		activities = append(activities, libraryActivity{Kind: "maintenance", Label: "Building substring search",
+			Detail:   fmt.Sprintf("%d of %d conversations", progress.Done, progress.Total),
+			Progress: fraction(float64(progress.Done), float64(progress.Total)), Writes: true,
+			OnEject: "Stops between batches; it carries on when Pharos next opens the library."})
+	}
 	if pending, err := s.Catalog.libraryPending(100_000); err == nil && pending > 0 {
 		activities = append(activities, libraryActivity{Kind: "maintenance", Label: "Updating the Library view",
 			Detail: plural(pending, "workspace") + " to refresh", Writes: true,
