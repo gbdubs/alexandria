@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"strings"
 	"testing"
@@ -197,6 +198,64 @@ func TestLibrarySubstringSearchAndExplanations(t *testing.T) {
 
 	if rows := queryLibrary(t, server, "search=token+expires"); rows[0]["why"] != nil {
 		t.Fatal("explanations are only added on request")
+	}
+}
+
+func TestLibraryQuotedPhraseSearch(t *testing.T) {
+	catalog, config := testCatalog(t)
+	records := searchFixture()
+	records[0].Conversations[0].Messages[1].Text += "; backup manifest validated"
+	records = append(records,
+		WorkspaceRecord{SourceID: "reverse", SourceKind: "conductor", Account: "local", Title: "Reverse words", ActivityAt: "2026-09-18T12:00:00Z",
+			Conversations: []ConversationRecord{{NativeID: "reverse-thread", Provider: "codex", Account: "local", Messages: []MessageRecord{
+				{NativeID: "r1", Role: "user", Kind: "message", Text: "The error followed authentication in this flow.", Selected: true},
+			}}}},
+		WorkspaceRecord{SourceID: "separate", SourceKind: "conductor", Account: "local", Title: "Separate words", ActivityAt: "2026-09-17T12:00:00Z",
+			Conversations: []ConversationRecord{{NativeID: "separate-thread", Provider: "codex", Account: "local", Messages: []MessageRecord{
+				{NativeID: "s1", Role: "user", Kind: "message", Text: "An authentication failure occurred. Later there was an error.", Selected: true},
+			}}}},
+	)
+	ingestRecords(t, catalog, records...)
+	server := NewServer(config, catalog)
+	search := func(query string, substring bool) []map[string]any {
+		t.Helper()
+		parameters := "search=" + url.QueryEscape(query) + "&explain=1"
+		if substring {
+			parameters += "&substring=1"
+		}
+		return queryLibrary(t, server, parameters)
+	}
+	rows := search(`"authentication error"`, true)
+	if len(rows) != 1 || rows[0]["title"] != "Login flow" {
+		t.Fatalf("a quoted phrase must be in order within one message: %v", rows)
+	}
+	if !slices.Contains(rows[0]["match_types"].([]any), any("phrase")) {
+		t.Fatalf("phrase match type missing: %v", rows[0])
+	}
+	phrase := rows[0]["why"].(map[string]any)["phrase"].(map[string]any)
+	if phrase["count"] != float64(2) || len(phrase["messages"].([]any)) != 2 {
+		t.Fatalf("phrase explanation should cite matching messages: %v", phrase)
+	}
+	if rows := search(`"error authentication"`, true); len(rows) != 0 {
+		t.Fatalf("reverse order must not match: %v", rows)
+	}
+	if rows := search(`"authentication error" zqxwvtoolonly`, true); len(rows) != 0 {
+		t.Fatalf("unquoted terms cannot introduce work without the phrase: %v", rows)
+	}
+	if rows := search(`"authentication error" "token expires"`, true); len(rows) != 1 {
+		t.Fatalf("both phrases in the same message should match: %v", rows)
+	}
+	if rows := search(`"authentication error" "expired token"`, true); len(rows) != 0 {
+		t.Fatalf("both phrases must match in a message: %v", rows)
+	}
+	if rows := search(`"authentication error" uthentication`, true); len(rows) != 1 || rows[0]["why"].(map[string]any)["substring"] == nil {
+		t.Fatalf("unquoted substring search should still work with a phrase: %v", rows)
+	}
+	if rows := search(`"backup manifest"`, false); len(rows) != 1 || rows[0]["title"] != "Speed up catalog queries" {
+		t.Fatalf("phrase search should include tool output through the word index: %v", rows)
+	}
+	if rows := search(`"authentication error`, true); len(rows) == 0 {
+		t.Fatal("an unfinished quote should keep ordinary search behavior")
 	}
 }
 

@@ -514,6 +514,8 @@ function LibraryPage() {
     updateURI(name === "explain" ? "why" : name, value ? "" : "0");
   }
   const librarySearch = useMemo(() => ({ text: search, ...flags }), [search, flags.substring, flags.explain]);
+  const hasPhrase = /"[^"]+\s+[^"]+"/.test(search);
+  const hasOtherText = Boolean(search.replace(/"[^"]+"/g, "").trim());
   const kinds = ["whole words", ...(flags.substring ? ["text inside words"] : []), "related terms"];
   return <div className="alexandria-query-page">
     <div className="view-heading library-heading"><div><h1>Find past work</h1></div><div className="library-view-toggle" role="group" aria-label="Library result view">
@@ -521,14 +523,14 @@ function LibraryPage() {
       <button type="button" className={view === "conversation" ? "active" : ""} aria-pressed={view === "conversation"} onClick={() => chooseView("conversation")}>Conversations</button>
     </div></div>
     <form className="semantic-search" onSubmit={submit}>
-      <input type="search" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Bug, approach, file, or outcome…" aria-label="Search text and related terms" />
+      <input type="search" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder={'Bug, file, or "exact phrase"…'} aria-label="Search text and related terms" />
       <button type="submit">Search library</button>
     </form>
     <div className="search-options" role="group" aria-label="Search options">
       <label title="Also match three or more characters inside a word in conversation messages: log_que finds catalog_query. Tool output is matched by whole words only."><input type="checkbox" checked={flags.substring} onChange={event => setFlag("substring", event.target.checked)} /> Match inside words</label>
       <label title="Show which messages, words, and fields put each result in the list, and how its relevance was scored."><input type="checkbox" checked={flags.explain} onChange={event => setFlag("explain", event.target.checked)} /> Show why each result matched</label>
     </div>
-    {search ? <p className="muted semantic-hint">Results for “{search}” by {kinds.slice(0, -1).join(", ")} and {kinds[kinds.length - 1]}. Query-table filters apply within these matches.
+    {search ? <p className="muted semantic-hint">Results for “{search}” {hasPhrase ? <>must contain each quoted phrase in one message{hasOtherText ? `; remaining text matches by ${kinds.slice(0, -1).join(", ")} and ${kinds[kinds.length - 1]}` : ""}</> : <>match by {kinds.slice(0, -1).join(", ")} and {kinds[kinds.length - 1]}</>}. Query-table filters apply within these matches.
       {flags.substring && substringStatus && !substringStatus.ready ? <> <span className="search-index-note">Text inside words is still being indexed ({substringStatus.done.toLocaleString()} of {substringStatus.total.toLocaleString()} conversations), so some of those matches are missing.</span></> : null}</p> : null}
     <WhyContext.Provider value={setWhyRow}>
       <QuerySurface dataset="library" search={librarySearch} libraryView={view} />
@@ -542,7 +544,7 @@ type MatchMessage = { message_id: string; conversation_id: string; role: string;
 type TextWhy = { rank: number; count: number; terms: string[]; ignored?: string[]; messages: MatchMessage[] };
 type RelatedTerm = { query: string; matched: string[]; via: string; concept?: string; value: number; fields: string[] };
 type RelatedWhy = { cosine: number; threshold: number; weight: number; exact: boolean; signal: number; noise: number; scattered: number; terms: RelatedTerm[]; fields: { label: string; value: number }[] };
-type Why = { score: number; scan: number; parts: { kind: "text" | "related"; value: number; weight: number }[]; text?: TextWhy; substring?: TextWhy; related?: RelatedWhy };
+type Why = { score: number; scan: number; parts: { kind: "text" | "related"; value: number; weight: number }[]; text?: TextWhy; phrase?: TextWhy; substring?: TextWhy; related?: RelatedWhy };
 
 const WhyContext = React.createContext<(row: Row) => void>(() => {});
 
@@ -579,6 +581,7 @@ function WhyChips({ row }: { row: Row }) {
   const top = why.related?.terms[0];
   return <button type="button" className="why-chips" title="Show why this work matched" onClick={event => { event.stopPropagation(); open(row); }}>
     {why.text ? <span className="why-chip text">Words ×{why.text.count}</span> : null}
+    {why.phrase ? <span className="why-chip text">Phrase ×{why.phrase.count}</span> : null}
     {why.substring ? <span className="why-chip substring">Inside words ×{why.substring.count}</span> : null}
     {why.related ? <span className={`why-chip related ${noisy(why.related) ? "weak" : ""}`}>{top ? relatedLabel(top) : "Related"}{noisy(why.related) ? " · weak" : ""}</span> : null}
   </button>;
@@ -600,7 +603,7 @@ function MatchList({ row, matches, limit }: { row: Row; matches: TextWhy; limit?
 function WhyInline({ row }: { row: Row }) {
   const open = React.useContext(WhyContext);
   const why = row.why as Why;
-  const matches = why.text ?? why.substring;
+  const matches = why.phrase ?? why.text ?? why.substring;
   return <div className="why-inline">
     <div className="why-inline-head"><span className="result-message-label">Why this matched</span><WhyChips row={row} /></div>
     {matches ? <MatchList row={row} matches={matches} limit={1} /> : null}
@@ -628,7 +631,7 @@ function WhyDialog({ row, onClose }: { row: Row; onClose: () => void }) {
   }, [onClose]);
   const text = why.parts.find(part => part.kind === "text");
   const relatedPart = why.parts.find(part => part.kind === "related");
-  const lexicalRank = Math.min(...[why.text?.rank, why.substring?.rank].filter((rank): rank is number => Boolean(rank)));
+  const lexicalRank = Math.min(...[why.text?.rank, why.phrase?.rank, why.substring?.rank].filter((rank): rank is number => Boolean(rank)));
   return <div className="mcp-dialog-backdrop" onClick={onClose}><div className="mcp-dialog why-dialog" role="dialog" aria-modal="true" aria-label="Why this work matched" onClick={event => event.stopPropagation()}>
     <div className="mcp-card-heading"><div><h2>{String(row.title ?? "Untitled work")}</h2><p className="muted">Why it matched</p></div><button type="button" onClick={onClose}>Close</button></div>
     <section className="why-section">
@@ -640,6 +643,7 @@ function WhyDialog({ row, onClose }: { row: Row; onClose: () => void }) {
       </ul>
     </section>
     {why.text ? <TextSection row={row} title="Whole words" matches={why.text} scan={why.scan} note={`Messages holding every word of “${why.text.terms.join(" ")}”.`} /> : null}
+    {why.phrase ? <TextSection row={row} title="Quoted phrase" matches={why.phrase} scan={why.scan} note={`Messages containing ${why.phrase.terms.map(term => `“${term}”`).join(" and ")} as consecutive words.`} /> : null}
     {why.substring ? <TextSection row={row} title="Text inside words" matches={why.substring} scan={why.scan} note={`Conversation messages containing ${why.substring.terms.map(term => `“${term}”`).join(" and ")} anywhere, even mid-word.`} /> : null}
     {related ? <section className="why-section">
       <h3>Related terms</h3>
