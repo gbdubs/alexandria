@@ -436,7 +436,7 @@ func mcpLauncherPath(support string) string { return filepath.Join(support, "bin
 // and die when it is unplugged.
 func mcpLauncherScript(support string) string {
 	return `#!/bin/sh
-# Pharos MCP server for agent clients, written by ` + "`alexandria install-mcp`" + `.
+# Pharos MCP server for agent clients, written by ` + "`pharos install-mcp`" + `.
 # Run it with no arguments. It runs Pharos from this Mac's disk, not from the
 # library drive, so the drive can be ejected while agents stay connected. The
 # Pharos app keeps these current:
@@ -445,13 +445,13 @@ func mcpLauncherScript(support string) string {
 support=` + shellQuote(support) + `
 export PHAROS_SUPPORT_DIR="$support"
 pointer="$support/library.json"
-runtime="$support/runtime/current/Contents/MacOS/alexandria"
+runtime="$support/runtime/current/Contents/MacOS/pharos"
 if [ -x "$runtime" ]; then
 	exec "$runtime" mcp --library-json "$pointer"
 fi
 library=$(/usr/bin/plutil -extract library_dir raw -o - "$pointer" 2>/dev/null)
 if [ -n "$library" ]; then
-	for binary in "$library"/*.app/Contents/MacOS/alexandria; do
+	for binary in "$library"/*.app/Contents/MacOS/pharos; do
 		if [ -x "$binary" ]; then
 			echo "pharos-mcp: warning: there is no local Pharos runtime at $runtime, so this runs $binary from the library drive; unplugging the drive will stop this MCP server. Open Pharos on this Mac to install the runtime." >&2
 			exec "$binary" mcp --library-json "$pointer"

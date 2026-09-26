@@ -1,6 +1,6 @@
 // Drives the library, drive and captures UI (internal/archive/assets/library.js
 // and onboarding.js) against a synthetic portable library on a disk image this
-// test creates and detaches, served by a freshly built alexandria on a free
+// test creates and detaches, served by a freshly built pharos on a free
 // port. Two Macs are simulated with PHAROS_HOST_ID: "MacBook Air" captures
 // first from the CLI; "Mac Studio" is the Mac running the service, onboarding
 // for the first time. Nothing outside the temporary directory and the disk
@@ -37,7 +37,7 @@ const screenshots = process.env.PHAROS_UI_SCREENSHOTS;
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'pharos-ui-'));
 const volume = `PharosUI-${process.pid}`;
 let mount, device, library, token, port, service, browser, base;
-const binary = path.join(work, 'alexandria');
+const binary = path.join(work, 'pharos');
 
 const hostA = { id: 'host-a', label: 'Mac Studio', home: path.join(work, 'home-a'), support: path.join(work, 'support-a') };
 const hostB = { id: 'host-b', label: 'MacBook Air', home: path.join(work, 'home-b'), support: path.join(work, 'support-b') };
@@ -105,7 +105,7 @@ async function openPage(init, { onboarding = false } = {}) {
 
 describe('library, drive and captures UI', { skip }, () => {
   before(async () => {
-    execFileSync('go', ['build', '-o', binary, './cmd/alexandria'], { cwd: root, env: { ...process.env, GOTOOLCHAIN: 'auto' } });
+    execFileSync('go', ['build', '-o', binary, './cmd/pharos'], { cwd: root, env: { ...process.env, GOTOOLCHAIN: 'auto' } });
     // Sparse, so it takes only what is written; captures want 1 GB free.
     execFileSync('hdiutil', ['create', '-quiet', '-type', 'SPARSE', '-size', '3g', '-fs', 'APFS', '-volname', volume, path.join(work, 'library')]);
     const attached = execFileSync('hdiutil', ['attach', '-nobrowse', path.join(work, 'library.sparseimage')], { encoding: 'utf8' });

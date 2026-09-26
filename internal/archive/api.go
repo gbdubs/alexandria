@@ -148,12 +148,8 @@ func (s *Server) authorized(r *http.Request) bool {
 	if strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") && secureEqual(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), token) {
 		return true
 	}
-	// Cookies ignore ports, so each port has its own; the default port also
-	// accepts the name used before that.
+	// Cookies ignore ports, so each port has its own.
 	cookie, err := r.Cookie(s.cookieName())
-	if err != nil && s.Config().Port == 8765 {
-		cookie, err = r.Cookie("aiwa_token")
-	}
 	if err != nil {
 		return false
 	}

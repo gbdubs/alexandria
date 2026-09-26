@@ -85,7 +85,7 @@ func (c Config) checkLibrary(identity func(string) string) error {
 		}
 	}
 	if _, err := os.Stat(c.CatalogPath); errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("catalog not found at %s; is the drive mounted? Pharos never creates an empty catalog for a library implicitly; run `alexandria init-library DIR` to create a new library", c.CatalogPath)
+		return fmt.Errorf("catalog not found at %s; is the drive mounted? Pharos never creates an empty catalog for a library implicitly; run `pharos init-library DIR` to create a new library", c.CatalogPath)
 	} else if err != nil {
 		return err
 	}
@@ -121,9 +121,9 @@ func writeLibraryConfig(dir string, identity func(string) string, settings strin
 	path := filepath.Join(dir, libraryConfigName)
 	// Device numbers change between mounts; pinning one would lock the library
 	// out the next time the drive is attached.
-	pin := "# No stable volume identity was found. Set this from `alexandria volume-id` to\n# refuse copies of this library on other volumes.\nvolume_id = \"\""
+	pin := "# No stable volume identity was found. Set this from `pharos volume-id` to\n# refuse copies of this library on other volumes.\nvolume_id = \"\""
 	if volume := identity(dir); strings.HasPrefix(volume, "uuid:") {
-		pin = fmt.Sprintf("# Pharos refuses to open this library from any other volume. After moving it\n# deliberately, set this from `alexandria volume-id` on its new location.\nvolume_id = %q", volume)
+		pin = fmt.Sprintf("# Pharos refuses to open this library from any other volume. After moving it\n# deliberately, set this from `pharos volume-id` on its new location.\nvolume_id = %q", volume)
 	}
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if errors.Is(err, os.ErrExist) {

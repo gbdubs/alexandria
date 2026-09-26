@@ -420,9 +420,9 @@ func TestPreHostCatalogMigratesToLegacyHost(t *testing.T) {
 			source_id TEXT NOT NULL, digest TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(source_name,source_kind,source_account,source_id))`,
 		`INSERT INTO source_states VALUES('claude','claude','retrieval-only','fp','fp','complete','2026-09-01','2026-09-01',NULL,0,'2026-09-01')`,
 		`INSERT INTO source_record_states VALUES('claude','claude','local','session','digest','2026-09-01')`,
-		`INSERT INTO repositories(id,display_name,local_locations_json,created_at,updated_at) VALUES('repo','alexandria','["/Users/ann/src/alexandria"]','t','t')`,
+		`INSERT INTO repositories(id,display_name,local_locations_json,created_at,updated_at) VALUES('repo','pharos','["/Users/ann/src/pharos"]','t','t')`,
 		`INSERT INTO workspaces(id,source_kind,source_account,source_id,repository_id,title,location,indexed_at)
-			VALUES('w-session','claude','local','session','repo','Session','/Users/ann/src/alexandria','2026-09-01'),
+			VALUES('w-session','claude','local','session','repo','Session','/Users/ann/src/pharos','2026-09-01'),
 			('w-old','codex','local','old','repo','Old','/Users/ann/src/old','2026-08-01')`,
 		`INSERT INTO conversations(id,workspace_id,provider,account,native_id,origin,ended_at)
 			VALUES('c-session','w-session','claude','local','session','/Users/ann/.claude/projects/x/session.jsonl','2026-09-05T00:00:00Z')`,
@@ -457,7 +457,7 @@ func TestPreHostCatalogMigratesToLegacyHost(t *testing.T) {
 		}
 		rows, err := queryMaps(catalog.DB, "SELECT workspace_id,host_id,source_name,location,repository_locations_json FROM workspace_sightings ORDER BY workspace_id")
 		if err != nil || len(rows) != 2 || rows[0]["source_name"] != "" || rows[1]["source_name"] != "claude" || rows[1]["host_id"] != "host-a" ||
-			rows[1]["location"] != "/Users/ann/src/alexandria" || rows[1]["repository_locations_json"] != `["/Users/ann/src/alexandria"]` {
+			rows[1]["location"] != "/Users/ann/src/pharos" || rows[1]["repository_locations_json"] != `["/Users/ann/src/pharos"]` {
 			t.Fatalf("workspace sightings were not backfilled: %#v %v", rows, err)
 		}
 		var origin string

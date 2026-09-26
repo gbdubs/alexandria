@@ -130,10 +130,10 @@ final class ArchiveService: ObservableObject {
             openLibrary(directory)
         case .user:
             let config = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Library/Application Support/AI Work Archive/archive.toml")
+                .appendingPathComponent("Library/Application Support/Pharos/archive.toml")
             guard let contents = try? String(contentsOf: config, encoding: .utf8) else {
                 let beside = Bundle.main.bundleURL.deletingLastPathComponent()
-                error = "Found neither library.toml beside this app nor \(config.path). Create a portable library with `alexandria init-library \"\(beside.path)\"`, or this Mac's configuration with `alexandria init \"\(config.path)\"`."
+                error = "Found neither library.toml beside this app nor \(config.path). Create a portable library with `pharos init-library \"\(beside.path)\"`, or this Mac's configuration with `pharos init \"\(config.path)\"`."
                 return
             }
             open(config, contents: contents)
@@ -356,7 +356,7 @@ final class ArchiveService: ObservableObject {
 
     private func startService(_ serviceURL: URL, token: String, config: URL, contents: String) {
         let task = Process()
-        let bundledExecutable = Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("alexandria")
+        let bundledExecutable = Bundle.main.executableURL?.deletingLastPathComponent().appendingPathComponent("pharos")
         if let bundledExecutable, FileManager.default.isExecutableFile(atPath: bundledExecutable.path) {
             task.executableURL = bundledExecutable
             task.arguments = ["--config", config.path, "serve"]
@@ -365,7 +365,7 @@ final class ArchiveService: ObservableObject {
             task.arguments = ["--config", config.path, "serve"]
         } else {
             task.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-            task.arguments = ["ai-work-archive", "--config", config.path, "serve"]
+            task.arguments = ["pharos", "--config", config.path, "serve"]
         }
         let log = ServiceLog()
         task.standardError = log.pipe
@@ -664,7 +664,7 @@ struct ArchiveWebView: NSViewRepresentable {
         configuration.userContentController.addScriptMessageHandler(
             context.coordinator,
             contentWorld: .page,
-            name: "alexandriaClipboard"
+            name: "pharosClipboard"
         )
         configuration.userContentController.addScriptMessageHandler(
             context.coordinator,
@@ -692,7 +692,7 @@ struct ArchiveWebView: NSViewRepresentable {
     static func dismantleNSView(_ view: ArchiveWKWebView, coordinator: Coordinator) {
         view.configuration.userContentController.removeScriptMessageHandler(forName: windowMessageName)
         view.configuration.userContentController.removeScriptMessageHandler(
-            forName: "alexandriaClipboard",
+            forName: "pharosClipboard",
             contentWorld: .page
         )
         view.configuration.userContentController.removeScriptMessageHandler(
@@ -889,7 +889,7 @@ struct LibraryDisconnectedView: View {
     }
 }
 
-@main struct AIWorkArchiveApp: App {
+@main struct PharosApp: App {
     @StateObject private var service = ArchiveService()
     var body: some Scene {
         WindowGroup("Pharos") {

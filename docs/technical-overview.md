@@ -2,13 +2,13 @@
 
 Pharos is a local-first macOS library for finding past work across TL1, Conductor, Codex, Claude, and supported desktop exports. A second capability, preserving and reclaiming **TL1-owned** workspaces through a custody-aware owner hook, is mothballed; see [`docs/reclamation/README.md`](reclamation/README.md) for what remains and how to resume it.
 
-The primary implementation is Go 1.26 with SQLite FTS, a local concept index, an authenticated loopback API, a read-only MCP server, and a responsive desktop UI. The Go service and UI are embedded in the macOS `.app`; the earlier Python implementation remains in `src/` as a compatibility reference while the destructive TL1 workflow is deliberately held back.
+The primary implementation is Go 1.26 with SQLite FTS, a local concept index, an authenticated loopback API, a read-only MCP server, and a responsive desktop UI. The Go service and UI are embedded in the macOS `.app`; the destructive TL1 workflow is deliberately held back.
 
-Pharos was previously named Alexandria (and before that, AI Work Archive). Only the visible name changed: the CLI executable is still `alexandria`, configuration still lives in `AI Work Archive`, and internal identifiers keep their earlier names so existing configs, saved views, and preferences carry over.
+The command-line executable is `pharos`, and a per-user installation keeps its configuration in `~/Library/Application Support/Pharos`.
 
 ## Safety defaults
 
-- Every configured source is read-only. No home-directory scan occurs: `alexandria probe` and the new-Mac panel check only a fixed list of known agent locations, and nothing is indexed until you opt in.
+- Every configured source is read-only. No home-directory scan occurs: `pharos probe` and the new-Mac panel check only a fixed list of known agent locations, and nothing is indexed until you opt in.
 - No source is reclaimed. TL1 reclamation is mothballed and excluded from the default build.
 - The archive never calls `rm -rf`, `git worktree remove`, `git worktree prune`, or `git gc`. TL1 owns the worker handshake, lock/lease, atomic recheck, and exact-resource removal.
 - Preservation must fit the 100,000,000-byte logical cap, reside on the pinned volume, and pass a complete hash/reopen check before acknowledgement.
@@ -21,16 +21,16 @@ Pharos was previously named Alexandria (and before that, AI Work Archive). Only 
 ```
 
 This one command builds the Go service and Swift wrapper, initializes
-`~/Library/Application Support/AI Work Archive/archive.toml` if it is missing,
+`~/Library/Application Support/Pharos/archive.toml` if it is missing,
 builds the macOS app, and launches it. Existing configuration is preserved.
 
 Edit that configuration to set `archive_root`, paste the value reported by
-`dist/Pharos.app/Contents/MacOS/alexandria volume-id /Volumes/euclid`, and set `enabled = true`
+`dist/Pharos.app/Contents/MacOS/pharos volume-id /Volumes/euclid`, and set `enabled = true`
 only on source paths you want indexed. Then ingest from the workspace when you
 want to refresh the library:
 
 ```sh
-dist/Pharos.app/Contents/MacOS/alexandria --config "$HOME/Library/Application Support/AI Work Archive/archive.toml" ingest
+dist/Pharos.app/Contents/MacOS/pharos --config "$HOME/Library/Application Support/Pharos/archive.toml" ingest
 ```
 
 To keep the app and its whole library on an external drive that moves between
@@ -66,7 +66,7 @@ Past Work also shows when an archived commit appears on the local `origin/main` 
 
 Delegated work is retained as a recursive `agent_sessions` tree, including sub-agents of sub-agents and links back to each session's messages. Session and workspace usage preserve uncached input, cache reads, cache creation, output, reasoning, and any unclassified aggregate remainder separately so pricing can be applied without reconstructing provider envelopes.
 
-Run diagnostics with `dist/Pharos.app/Contents/MacOS/alexandria --config "$HOME/Library/Application Support/AI Work Archive/archive.toml" doctor`. Configuration is documented in [`docs/configuration.md`](configuration.md).
+Run diagnostics with `dist/Pharos.app/Contents/MacOS/pharos --config "$HOME/Library/Application Support/Pharos/archive.toml" doctor`. Configuration is documented in [`docs/configuration.md`](configuration.md).
 
 ## Sources and identity
 
@@ -132,7 +132,7 @@ breakdown.
 Source controls only change ingestion participation or perform an explicit
 read-only refresh. They never delete source data.
 
-`alexandria mcp` exposes read-only conversation discovery in four layers:
+`pharos mcp` exposes read-only conversation discovery in four layers:
 `search_conversations` returns compact ranked cards; `get_conversation_overview`
 returns an extractive preview with message references;
 `search_conversation_passages` finds matching passages within a conversation;
@@ -182,8 +182,8 @@ The SwiftUI wrapper starts the loopback-only Go service embedded beside it and p
 ### Code signing
 
 `macos/build-app.sh` (and therefore `launch.sh`) signs what it builds: first the
-embedded service (`local.ai-work-archive.service`), then the bundle
-(`local.ai-work-archive`), both with the hardened runtime. The build fails if
+embedded service (`local.pharos.service`), then the bundle
+(`local.pharos`), both with the hardened runtime. The build fails if
 `codesign --verify --strict --deep` rejects the result.
 
 | Variable | Effect |
@@ -222,14 +222,14 @@ To inspect a signature:
 ```sh
 codesign -dvvv dist/Pharos.app                           # Identifier, Signature=adhoc or Authority=…, flags=…(runtime)
 codesign -d -r- dist/Pharos.app                          # designated requirement
-codesign -dvvv dist/Pharos.app/Contents/MacOS/alexandria
-codesign -d -r- dist/Pharos.app/Contents/MacOS/alexandria
+codesign -dvvv dist/Pharos.app/Contents/MacOS/pharos
+codesign -d -r- dist/Pharos.app/Contents/MacOS/pharos
 codesign --verify --strict --deep --verbose=2 dist/Pharos.app
 ```
 
 An ad-hoc build reports `designated => cdhash H"…"`. A build signed with the
 self-signed identity should report
-`designated => identifier "local.ai-work-archive" and certificate leaf = H"…"`.
+`designated => identifier "local.pharos" and certificate leaf = H"…"`.
 
 ### UI feedback
 

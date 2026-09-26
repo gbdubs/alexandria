@@ -1,6 +1,6 @@
 {
   "$schema": "https://github.com/Pythia-Software/query-table/schema/query-table.schema.json",
-  "name": "alexandria_tl1_attempts",
+  "name": "pharos_tl1_attempts",
   "version": 1,
   "idField": "id",
   "defaultLimit": 50,

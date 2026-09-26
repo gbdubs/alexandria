@@ -49,7 +49,7 @@ func runtimeTests(_ args: [String]) {
     let signature = try! CodeSignature.of(real)
     check(signature.cdhash == args[3], "build id is the bundle's cdhash (\(signature.cdhash))")
     let signatureV2 = try! CodeSignature.of(realV2)
-    check(signatureV2.cdhash != signature.cdhash, "a changed nested alexandria changes the build id (\(signatureV2.cdhash))")
+    check(signatureV2.cdhash != signature.cdhash, "a changed nested pharos changes the build id (\(signatureV2.cdhash))")
     let me = try! CodeSignature.runningCode()
     check(me.cdhash == (try! CodeSignature.of(URL(fileURLWithPath: CommandLine.arguments[0]))).cdhash,
           "running code's cdhash matches its file (\(me.cdhash))")
@@ -59,9 +59,9 @@ func runtimeTests(_ args: [String]) {
     check(copy.path == cache.runtime.appendingPathComponent("\(signature.cdhash)/Pharos.app").path, "copied to runtime/<cdhash>/Pharos.app")
     check((try? signature.verify(copy)) != nil, "copy passes strict signature validation against the original's requirement")
     check((try? fileManager.destinationOfSymbolicLink(atPath: cache.current.path)) == "\(signature.cdhash)/Pharos.app", "current -> \(signature.cdhash)/Pharos.app")
-    check(cache.current.appendingPathComponent("Contents/MacOS/alexandria").resolvingSymlinksInPath().path
-          == copy.appendingPathComponent("Contents/MacOS/alexandria").resolvingSymlinksInPath().path, "current/Contents/MacOS/alexandria resolves into the copy")
-    let executable = copy.appendingPathComponent("Contents/MacOS/alexandria")
+    check(cache.current.appendingPathComponent("Contents/MacOS/pharos").resolvingSymlinksInPath().path
+          == copy.appendingPathComponent("Contents/MacOS/pharos").resolvingSymlinksInPath().path, "current/Contents/MacOS/pharos resolves into the copy")
+    let executable = copy.appendingPathComponent("Contents/MacOS/pharos")
     let before = inode(executable)
     _ = try! cache.install(real, signature: signature)
     check(inode(executable) == before, "a valid copy is reused, not copied again")
@@ -92,7 +92,7 @@ func runtimeTests(_ args: [String]) {
     let stubCopy = try! cache.install(stub, signature: stubSignature)
     _ = try! cache.install(stubV2, signature: stubSignatureV2)
     let sleeper = Process()
-    sleeper.executableURL = stubCopy.appendingPathComponent("Contents/MacOS/alexandria")
+    sleeper.executableURL = stubCopy.appendingPathComponent("Contents/MacOS/pharos")
     sleeper.arguments = ["--sleep", "30"]
     try! sleeper.run()
     let removed = cache.prune().map(\.lastPathComponent)
@@ -271,10 +271,10 @@ final class Events {
     func count(_ prefix: String) -> Int { all().filter { $0.hasPrefix(prefix) }.count }
 }
 
-/// Starts `alexandria serve` on a library and waits until it answers.
-func serveLibrary(_ alexandria: String, config: String, service: URL, token: String) -> Process {
+/// Starts `pharos serve` on a library and waits until it answers.
+func serveLibrary(_ pharos: String, config: String, service: URL, token: String) -> Process {
     let process = Process()
-    process.executableURL = URL(fileURLWithPath: alexandria)
+    process.executableURL = URL(fileURLWithPath: pharos)
     process.arguments = ["--config", config, "serve"]
     process.standardOutput = FileHandle.nullDevice
     process.standardError = FileHandle(forWritingAtPath: "/dev/null")
@@ -295,9 +295,9 @@ func serveLibrary(_ alexandria: String, config: String, service: URL, token: Str
     return process
 }
 
-/// volume UUID MOUNT VOLUME_DEVICE ALEXANDRIA CONFIG PORT TOKEN IMAGE_DEVICE
+/// volume UUID MOUNT VOLUME_DEVICE PHAROS CONFIG PORT TOKEN IMAGE_DEVICE
 func volumeTests(_ args: [String]) {
-    let uuid = args[0], mount = args[1], device = args[2], alexandria = args[3], config = args[4]
+    let uuid = args[0], mount = args[1], device = args[2], pharos = args[3], config = args[4]
     let service = URL(string: "http://127.0.0.1:\(args[5])/")!, token = args[6]
     let events = Events()
     var releaseToken = token
@@ -317,7 +317,7 @@ func volumeTests(_ args: [String]) {
         monitor.start()
         return monitor
     }
-    func serve() -> Process { serveLibrary(alexandria, config: config, service: service, token: token) }
+    func serve() -> Process { serveLibrary(pharos, config: config, service: service, token: token) }
     let volume = LibraryVolume(containing: URL(fileURLWithPath: mount).appendingPathComponent("Pharos"))
     check(volume?.uuid == uuid.uppercased() && volume?.relativePath == "Pharos", "LibraryVolume finds the image's UUID and the library within it")
 
@@ -382,10 +382,10 @@ func volumeTests(_ args: [String]) {
     monitor.stop()
 }
 
-/// eject UUID MOUNT ALEXANDRIA CONFIG PORT TOKEN
+/// eject UUID MOUNT PHAROS CONFIG PORT TOKEN
 /// The Eject button's path: release as the app does, then `diskutil eject`.
 func ejectTests(_ args: [String]) {
-    let uuid = args[0], mount = URL(fileURLWithPath: args[1]), alexandria = args[2], config = args[3]
+    let uuid = args[0], mount = URL(fileURLWithPath: args[1]), pharos = args[2], config = args[3]
     let service = URL(string: "http://127.0.0.1:\(args[4])/")!, token = args[5]
     let name = mount.lastPathComponent
     let events = Events()
@@ -416,7 +416,7 @@ func ejectTests(_ args: [String]) {
     monitor.onMount = { events.add("mount \($0.path)") }
     monitor.start()
     check(wait(3) { events.count("mount ") >= 1 }, "monitor sees the re-attached image")
-    let process = serveLibrary(alexandria, config: config, service: service, token: token)
+    let process = serveLibrary(pharos, config: config, service: service, token: token)
 
     releaseToken = "wrong-token"
     let refused = LibraryEject.run(release: release, eject: { VolumeEject.eject(mount, name: name) })

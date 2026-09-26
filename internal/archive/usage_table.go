@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"alexandria/internal/querytable"
+	"github.com/gbdubs/pharos/internal/querytable"
 )
 
 var usageTokenFields = []string{

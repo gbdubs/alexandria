@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"alexandria/internal/querytable"
+	"github.com/gbdubs/pharos/internal/querytable"
 )
 
 func TestWritingRowsFoldSubagentWorkAndFollowFilters(t *testing.T) {

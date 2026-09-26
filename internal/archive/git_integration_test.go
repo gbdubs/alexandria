@@ -135,11 +135,11 @@ func TestMainIntegrationNegativeLookupCache(t *testing.T) {
 	}
 	trace := filepath.Join(t.TempDir(), "git-calls")
 	shimDir := t.TempDir()
-	shim := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$ALEXANDRIA_GIT_TRACE\"\nexec '" + strings.ReplaceAll(gitPath, "'", "'\\''") + "' \"$@\"\n"
+	shim := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$PHAROS_GIT_TRACE\"\nexec '" + strings.ReplaceAll(gitPath, "'", "'\\''") + "' \"$@\"\n"
 	if err := os.WriteFile(filepath.Join(shimDir, "git"), []byte(shim), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("ALEXANDRIA_GIT_TRACE", trace)
+	t.Setenv("PHAROS_GIT_TRACE", trace)
 	t.Setenv("PATH", shimDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	refresh := func() []string {
 		t.Helper()

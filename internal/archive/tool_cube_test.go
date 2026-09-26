@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"alexandria/internal/querytable"
+	"github.com/gbdubs/pharos/internal/querytable"
 )
 
 // seedToolCalls writes n tool calls with varied values, including nulls and

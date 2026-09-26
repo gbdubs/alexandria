@@ -198,7 +198,7 @@ func (c *Catalog) MCPStatus(config Config) (map[string]any, error) {
 		_, missing := os.Stat(launcher)
 		note := "Agent clients start this launcher on this Mac. It runs Pharos from this Mac's disk and opens the library only while answering, so its drive can be ejected while agents stay connected; tool calls report the library as not connected until the drive is back. Disabling MCP rejects tool calls, including from already-connected clients."
 		if missing != nil {
-			note += " The launcher is not installed yet; run `alexandria install-mcp`."
+			note += " The launcher is not installed yet; run `pharos install-mcp`."
 		}
 		return map[string]any{"enabled": enabled, "transport": "stdio", "command": launcher, "args": []string{},
 			"launcher_installed": missing == nil, "note": note}, nil

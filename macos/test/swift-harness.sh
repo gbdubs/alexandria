@@ -16,7 +16,7 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 PORT=${1:-18768}
 case "$PORT" in 8765|8766) echo "Use a port other than 8765/8766." >&2; exit 2 ;; esac
 WORK=$(mktemp -d)
-# Every alexandria run below (and the service the harness starts) writes
+# Every pharos run below (and the service the harness starts) writes
 # per-Mac files here, never in ~/Library/Application Support/Pharos.
 export PHAROS_SUPPORT_DIR="$WORK/service-support"
 NAME="PharosTest-$(od -An -N4 -tx4 /dev/urandom | tr -d ' ')"
@@ -34,10 +34,10 @@ sign() { codesign --force --timestamp=none --sign - --options runtime "$@" 2>/de
 echo "Building Pharos.app (not launched)…"
 "$ROOT/macos/build-app.sh" "$WORK/real" >"$WORK/build.log" 2>&1 || { cat "$WORK/build.log" >&2; exit 1; }
 REAL="$WORK/real/Pharos.app"
-# The same build with a different nested alexandria.
+# The same build with a different nested pharos.
 mkdir -p "$WORK/real-v2" && cp -R "$REAL" "$WORK/real-v2/"
-sign --identifier local.ai-work-archive.service.v2 "$WORK/real-v2/Pharos.app/Contents/MacOS/alexandria"
-sign --identifier local.ai-work-archive "$WORK/real-v2/Pharos.app"
+sign --identifier local.pharos.service.v2 "$WORK/real-v2/Pharos.app/Contents/MacOS/pharos"
+sign --identifier local.pharos "$WORK/real-v2/Pharos.app"
 
 # Background-only stubs: with --library DIR they write their path and
 # arguments to DIR/stub-launched.txt; with --sleep N they sleep. The app
@@ -97,19 +97,19 @@ cc -O2 -o "$WORK/stub-bin" "$WORK/stub.c"
 stub_bundle() {
     app="$WORK/$1/Pharos.app"
     mkdir -p "$app/Contents/MacOS"
-    cp "$WORK/stub-app" "$app/Contents/MacOS/AIWorkArchive"
-    cp "$WORK/stub-bin" "$app/Contents/MacOS/alexandria"
+    cp "$WORK/stub-app" "$app/Contents/MacOS/PharosApp"
+    cp "$WORK/stub-bin" "$app/Contents/MacOS/pharos"
     cat >"$app/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleExecutable</key><string>AIWorkArchive</string>
+<key>CFBundleExecutable</key><string>PharosApp</string>
 <key>CFBundleIdentifier</key><string>local.pharos-test.stub</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>LSBackgroundOnly</key><true/>
 </dict></plist>
 EOF
-    sign --identifier "local.pharos-test.stub.$1.service" "$app/Contents/MacOS/alexandria"
+    sign --identifier "local.pharos-test.stub.$1.service" "$app/Contents/MacOS/pharos"
     sign --identifier local.pharos-test.stub "$app"
 }
 stub_bundle stub
@@ -125,7 +125,7 @@ attached=$(hdiutil attach -nobrowse "$WORK/$NAME.dmg")
 DEV=$(echo "$attached" | awk 'NR == 1 {print $1}')
 MOUNT=$(echo "$attached" | awk -F'\t' '/\/Volumes\//{print $NF}')
 case "$MOUNT" in "/Volumes/$NAME"*) ;; *) echo "unexpected mount point '$MOUNT'" >&2; exit 1 ;; esac
-CLI="$REAL/Contents/MacOS/alexandria"
+CLI="$REAL/Contents/MacOS/pharos"
 "$CLI" init-library "$MOUNT/Pharos" >/dev/null
 CONFIG="$MOUNT/Pharos/library.toml"
 sed -i '' "s/^port = 8766$/port = $PORT/" "$CONFIG"

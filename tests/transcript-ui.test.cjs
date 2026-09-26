@@ -9,7 +9,7 @@ const { createRequire } = require('node:module');
 const root = path.resolve(__dirname, '..');
 const localRequire = createRequire(path.join(root, '.context/browser-tests/package.json'));
 const { chromium } = localRequire('playwright');
-const source = fs.readFileSync(['src/ai_work_archive/ui.py', 'internal/archive/assets/ui.py'].map(name => path.join(root, name)).find(file => fs.existsSync(file)), 'utf8');
+const source = fs.readFileSync(['src/pharos/ui.py', 'internal/archive/assets/ui.py'].map(name => path.join(root, name)).find(file => fs.existsSync(file)), 'utf8');
 const html = source.slice(source.indexOf("r'''") + 4, source.lastIndexOf("'''"));
 let browser;
 before(async () => {
@@ -131,7 +131,7 @@ test('conversation header aligns stats and actions, and model searches Library',
   assert.equal(await head.locator('.source-details').getAttribute('open'),'');
   await head.locator('.source-details > summary').click();
   if(process.env.HEADER_SCREENSHOT)await page.screenshot({path:path.join(root,'.context/conversation-header.png')});
-  await page.evaluate(()=>{window.alexandriaQueryTables={filterModel:model=>window.selectedModel=model}});
+  await page.evaluate(()=>{window.pharosQueryTables={filterModel:model=>window.selectedModel=model}});
   await head.locator('.model-search').click();
   assert.equal(new URL(page.url()).pathname,'/library');
   assert.equal(await page.evaluate(()=>window.selectedModel),'claude-opus-5-5');
@@ -310,7 +310,7 @@ const transcript = page => page.locator('#transcript-test-root');
 
 async function workFixture(t, overrides = {}) {
   const page = await fixture(t, []);
-  const work = { id:'work', title:'Inspect renderer', repository_name:'alexandria', branch:'feature', location:'/workspace',
+  const work = { id:'work', title:'Inspect renderer', repository_name:'pharos', branch:'feature', location:'/workspace',
     summary:{initiation:'Duplicate initiation',outcome:'Duplicate outcome',failures:'Duplicate failures'},
     prs:[{number:42,title:'Improve archive search',state:'open',url:'https://example.com/pr/42'}],
     attempts:[{attempt_no:1,result:'Retained checkpoint'}], handoffs:[],
@@ -344,18 +344,18 @@ test('workspace leads with transcript and keeps supporting information collapsed
   await page.locator('#detailBody').getByText('Usage',{exact:true}).click();
   assert.match(await transcript(page).innerText(),/Input tokens/);
   if(process.env.TRANSCRIPT_SCREENSHOTS){await page.locator('.archive-details > summary').click();await page.locator('#detailBody').getByText('Usage',{exact:true}).click();await page.screenshot({path:path.join(root,'.context/browser-tests/screenshots/workspace-conversation-first.png'),fullPage:true})}
-  await page.evaluate(()=>{window.filteredRepository='';window.alexandriaQueryTables={filterRepository:value=>{window.filteredRepository=value}}});
-  await page.getByRole('button',{name:'alexandria',exact:true}).click();
-  assert.equal(await page.evaluate(()=>window.filteredRepository),'alexandria');
+  await page.evaluate(()=>{window.filteredRepository='';window.pharosQueryTables={filterRepository:value=>{window.filteredRepository=value}}});
+  await page.getByRole('button',{name:'pharos',exact:true}).click();
+  assert.equal(await page.evaluate(()=>window.filteredRepository),'pharos');
   assert.equal(await page.locator('#library').getAttribute('class'),'view active');
 });
 
 test('workspace discovers GitHub pull-request links retained in conversation text', async t => {
-  const page = await workFixture(t,{prs:[],canonical_remote:'git@github.com:acme/alexandria.git',main_merge_commit:'abcdef1234567890',main_merge_title:'Merge feature into main',main_merge_method:'merge',main_merge_url:'https://github.com/acme/alexandria/commit/abcdef1234567890',conversations:[{
-    provider:'codex',native_id:'one',coverage:'complete',messages:[human('Ship the fix'),event('reply','message','Opened https://github.com/acme/alexandria/pull/73 for review.',4)]
+  const page = await workFixture(t,{prs:[],canonical_remote:'git@github.com:acme/pharos.git',main_merge_commit:'abcdef1234567890',main_merge_title:'Merge feature into main',main_merge_method:'merge',main_merge_url:'https://github.com/acme/pharos/commit/abcdef1234567890',conversations:[{
+    provider:'codex',native_id:'one',coverage:'complete',messages:[human('Ship the fix'),event('reply','message','Opened https://github.com/acme/pharos/pull/73 for review.',4)]
   }]});
-  assert.equal(await page.getByRole('link',{name:'PR #73',exact:true}).getAttribute('href'),'https://github.com/acme/alexandria/pull/73');
-  assert.equal(await page.getByRole('link',{name:'Merged: Merge feature into main',exact:true}).getAttribute('href'),'https://github.com/acme/alexandria/commit/abcdef1234567890');
+  assert.equal(await page.getByRole('link',{name:'PR #73',exact:true}).getAttribute('href'),'https://github.com/acme/pharos/pull/73');
+  assert.equal(await page.getByRole('link',{name:'Merged: Merge feature into main',exact:true}).getAttribute('href'),'https://github.com/acme/pharos/commit/abcdef1234567890');
 });
 
 test('workspace switches conversations, links files across conversations, and warns only for limited coverage', async t => {
@@ -853,16 +853,16 @@ test('saved feedback and an unfinished annotation survive a page refresh', async
   await page.evaluate(() => {
     const target = { id:'draft-target', note:'', view:{id:'library',title:'Library'}, label:'Search', tag:'input',
       selector:'#search', bounds:{x:1,y:2,width:100,height:30}, viewport:{width:1280,height:900,device_pixel_ratio:1},
-      source:'src/ai_work_archive/ui.py (APP_HTML)', styles:{display:'block'} };
-    localStorage.setItem('aiwa-ui-feedback-v1', JSON.stringify([{...target,id:'saved',note:'Persist this annotation'}]));
-    localStorage.setItem('aiwa-ui-feedback-draft-v1', JSON.stringify({target,note:'Unfinished but important'}));
+      source:'src/pharos/ui.py (APP_HTML)', styles:{display:'block'} };
+    localStorage.setItem('pharos-ui-feedback-v1', JSON.stringify([{...target,id:'saved',note:'Persist this annotation'}]));
+    localStorage.setItem('pharos-ui-feedback-draft-v1', JSON.stringify({target,note:'Unfinished but important'}));
   });
   await page.reload();
   const result = await page.evaluate(() => {
     const state = { annotations:feedbackAnnotations.map(item=>item.note), draft:document.querySelector('#feedbackNote').value,
       composerOpen:document.querySelector('#feedbackComposer').classList.contains('open'), count:document.querySelector('#feedbackCount').textContent };
-    localStorage.removeItem('aiwa-ui-feedback-v1');
-    localStorage.removeItem('aiwa-ui-feedback-draft-v1');
+    localStorage.removeItem('pharos-ui-feedback-v1');
+    localStorage.removeItem('pharos-ui-feedback-draft-v1');
     return state;
   });
   assert.deepEqual(result.annotations, ['Persist this annotation']);
@@ -876,12 +876,12 @@ test('feedback copy uses the macOS clipboard bridge and only clears after succes
   const result = await page.evaluate(async () => {
     window.nativeClipboardText = '';
     delete window.webkit;
-    Object.defineProperty(window, 'webkit', { value: { messageHandlers: { alexandriaClipboard: {
+    Object.defineProperty(window, 'webkit', { value: { messageHandlers: { pharosClipboard: {
       postMessage: async value => { window.nativeClipboardText = value; return true; },
     } } }, configurable: true });
     feedbackAnnotations = [{ note:'Make this clearer', view:{id:'library',title:'Library'}, label:'Search', tag:'input',
       selector:'#search', bounds:{x:1,y:2,width:100,height:30}, viewport:{width:1280,height:900,device_pixel_ratio:1},
-      source:'src/ai_work_archive/ui.py (APP_HTML)', styles:{display:'block'} }];
+      source:'src/pharos/ui.py (APP_HTML)', styles:{display:'block'} }];
     document.querySelector('#feedbackClearOnCopy').checked = true;
     await copyFeedback();
     return { text: window.nativeClipboardText, remaining: feedbackAnnotations.length, toast: document.querySelector('#feedbackToast').textContent };
@@ -900,7 +900,7 @@ test('feedback copy reports clipboard failure and preserves annotations', async 
     document.execCommand = () => false;
     feedbackAnnotations = [{ note:'Do not lose me', view:{id:'library',title:'Library'}, label:'Search', tag:'input',
       selector:'#search', bounds:{x:1,y:2,width:100,height:30}, viewport:{width:1280,height:900,device_pixel_ratio:1},
-      source:'src/ai_work_archive/ui.py (APP_HTML)', styles:{display:'block'} }];
+      source:'src/pharos/ui.py (APP_HTML)', styles:{display:'block'} }];
     document.querySelector('#feedbackClearOnCopy').checked = true;
     await copyFeedback();
     return { remaining: feedbackAnnotations.length, toast: document.querySelector('#feedbackToast').textContent,

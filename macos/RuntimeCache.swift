@@ -8,7 +8,7 @@ import Security
 // drive kills that code as soon as it pages. The copy lives in the runtime
 // cache, keyed by the build's code directory hash (cdhash), which changes
 // whenever either executable does: the bundle's seal records the nested
-// alexandria's own signature.
+// pharos's own signature.
 
 /// A simple `key = value` read of Pharos's TOML files, as the app needs only
 /// top-level strings and numbers.
@@ -121,7 +121,7 @@ struct RuntimeCache {
     let root: URL
     var runtime: URL { root.appendingPathComponent("runtime", isDirectory: true) }
     /// Always points at the copy last opened from a library, e.g. for
-    /// current/Contents/MacOS/alexandria.
+    /// current/Contents/MacOS/pharos.
     var current: URL { runtime.appendingPathComponent("current") }
     var record: URL { root.appendingPathComponent("library.json") }
 

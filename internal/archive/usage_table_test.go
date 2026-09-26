@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"alexandria/internal/querytable"
+	"github.com/gbdubs/pharos/internal/querytable"
 )
 
 func ingestUsageFixture(t *testing.T, catalog *Catalog) {

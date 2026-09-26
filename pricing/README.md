@@ -40,7 +40,7 @@ and long-context premiums, so it is a lower bound.
 Validate the file and see which of your models still lack a confirmed price:
 
 ```sh
-alexandria --config ~/Library/Application\ Support/AI\ Work\ Archive/archive.toml pricing check [FILE]
+pharos --config ~/Library/Application\ Support/AI\ Work\ Archive/archive.toml pricing check [FILE]
 ```
 
 Cost cells show `—` for unpriced usage, `≈` for assumed prices, and a trailing `+` when part of the usage had no rate. Settings → Health shows the share of usage that is priced.
@@ -57,7 +57,7 @@ Placeholders such as `<synthetic>` are ignored. The same prompt is available fro
 the command line:
 
 ```sh
-alexandria --config ~/Library/Application\ Support/AI\ Work\ Archive/archive.toml pricing prompt
+pharos --config ~/Library/Application\ Support/AI\ Work\ Archive/archive.toml pricing prompt
 ```
 
 The agent adds only `proposed` rows. Review each row's source, flip the correct

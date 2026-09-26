@@ -22,78 +22,78 @@
 }
 
 /* Shared line icons also fit the third-party query controls' compact rows. */
-.alexandria-query-page .qt-iconified { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
-.alexandria-query-page .qt-iconified svg.app-icon { width: 14px; height: 14px; }
-.alexandria-query-page .qt-chip-grip.qt-iconified svg.app-icon { width: 13px; height: 13px; }
-.alexandria-query-page .qt-qb-saved-star.qt-iconified svg.app-icon { width: 16px; height: 16px; }
-.alexandria-query-page .qt-qb-collapse-caret.qt-iconified svg.app-icon,
-.alexandria-query-page .qt-op-caret.qt-iconified svg.app-icon { width: 13px; height: 13px; }
-.alexandria-query-page .qt-sort-indicator.qt-iconified { vertical-align: middle; gap: 1px; }
-.alexandria-query-page .qt-sort-indicator.qt-iconified svg.app-icon { width: 12px; height: 12px; }
-.alexandria-query-page .qt-cell svg.app-icon { width: 14px; height: 14px; }
+.pharos-query-page .qt-iconified { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.pharos-query-page .qt-iconified svg.app-icon { width: 14px; height: 14px; }
+.pharos-query-page .qt-chip-grip.qt-iconified svg.app-icon { width: 13px; height: 13px; }
+.pharos-query-page .qt-qb-saved-star.qt-iconified svg.app-icon { width: 16px; height: 16px; }
+.pharos-query-page .qt-qb-collapse-caret.qt-iconified svg.app-icon,
+.pharos-query-page .qt-op-caret.qt-iconified svg.app-icon { width: 13px; height: 13px; }
+.pharos-query-page .qt-sort-indicator.qt-iconified { vertical-align: middle; gap: 1px; }
+.pharos-query-page .qt-sort-indicator.qt-iconified svg.app-icon { width: 12px; height: 12px; }
+.pharos-query-page .qt-cell svg.app-icon { width: 14px; height: 14px; }
 .result-turn-nav button { display: inline-grid; place-items: center; }
 .result-turn-nav button svg.app-icon { width: 15px; height: 15px; }
 
-.alexandria-query-page { min-width: 0; }
-.alexandria-query-page .view-heading { margin-bottom: 16px; }
-.alexandria-query-page .view-heading h1 { margin: 0 0 4px; }
-.alexandria-query-page .qt-qb,
-.alexandria-query-page .qt-table,
-.alexandria-query-page .qt-metric { background: var(--panel); }
-.alexandria-query-page .qt-qb { margin-bottom: 0; border-radius: 6px 6px 0 0; box-shadow: 0 4px 18px #34230d0b; }
-.alexandria-query-page .qt-table-wrap { max-height: none !important; overflow: visible !important; border-radius: 0; box-shadow: 0 4px 18px #34230d0b; }
-.alexandria-query-page .qt-table { border-radius: 0; }
-.alexandria-query-page .qt-table thead { top: var(--app-header-height, 0px); z-index: 1; }
-.alexandria-query-page .qt-table tfoot { position: static; }
-.alexandria-query-page .qt-th { font-family: var(--serif); color: var(--ink); }
+.pharos-query-page { min-width: 0; }
+.pharos-query-page .view-heading { margin-bottom: 16px; }
+.pharos-query-page .view-heading h1 { margin: 0 0 4px; }
+.pharos-query-page .qt-qb,
+.pharos-query-page .qt-table,
+.pharos-query-page .qt-metric { background: var(--panel); }
+.pharos-query-page .qt-qb { margin-bottom: 0; border-radius: 6px 6px 0 0; box-shadow: 0 4px 18px #34230d0b; }
+.pharos-query-page .qt-table-wrap { max-height: none !important; overflow: visible !important; border-radius: 0; box-shadow: 0 4px 18px #34230d0b; }
+.pharos-query-page .qt-table { border-radius: 0; }
+.pharos-query-page .qt-table thead { top: var(--app-header-height, 0px); z-index: 1; }
+.pharos-query-page .qt-table tfoot { position: static; }
+.pharos-query-page .qt-th { font-family: var(--serif); color: var(--ink); }
 /* Denser rows than the component's 8px/12px default; narrow screens keep its touch padding. */
-@media (min-width: 641px) { .alexandria-query-page :is(.qt-th, .qt-cell) { padding: 6px 10px; } }
-.alexandria-query-page .qt-btn,
-.alexandria-query-page .qt-add,
-.alexandria-query-page .qt-link-btn,
-.alexandria-query-page .qt-chip,
-.alexandria-query-page .qt-chip-op-btn,
-.alexandria-query-page .qt-picker-item,
-.alexandria-query-page .qt-cm-item { color: var(--ink); }
-.alexandria-query-page .qt-btn,
-.alexandria-query-page .qt-add,
-.alexandria-query-page .qt-qb-bar,
-.alexandria-query-page .qt-chip,
-.alexandria-query-page .qt-chip-move,
-.alexandria-query-page .qt-chip-op,
-.alexandria-query-page .qt-chip-val,
-.alexandria-query-page .qt-chip-op-btn,
-.alexandria-query-page .qt-chip-agg-group,
-.alexandria-query-page .qt-chip--or,
-.alexandria-query-page .qt-picker-input,
-.alexandria-query-page .qt-auto-refresh-select,
-.alexandria-query-page .qt-op-pop,
-.alexandria-query-page .qt-picker-list,
-.alexandria-query-page .qt-cell-menu,
-.alexandria-query-page .qt-modal,
-.alexandria-query-page .qt-auto-refresh-popover { background: var(--panel); color: var(--ink); }
-.alexandria-query-page .qt-chip--or { border-right-color: var(--panel); border-left-color: var(--panel); }
-.alexandria-query-page .qt-row > .qt-checkbox-cell:first-child { background: var(--panel); }
-.alexandria-query-page .cm-editor { background: var(--panel); color: var(--ink); }
-.alexandria-query-page .qt-btn--primary { color: var(--panel); background: var(--accent); }
+@media (min-width: 641px) { .pharos-query-page :is(.qt-th, .qt-cell) { padding: 6px 10px; } }
+.pharos-query-page .qt-btn,
+.pharos-query-page .qt-add,
+.pharos-query-page .qt-link-btn,
+.pharos-query-page .qt-chip,
+.pharos-query-page .qt-chip-op-btn,
+.pharos-query-page .qt-picker-item,
+.pharos-query-page .qt-cm-item { color: var(--ink); }
+.pharos-query-page .qt-btn,
+.pharos-query-page .qt-add,
+.pharos-query-page .qt-qb-bar,
+.pharos-query-page .qt-chip,
+.pharos-query-page .qt-chip-move,
+.pharos-query-page .qt-chip-op,
+.pharos-query-page .qt-chip-val,
+.pharos-query-page .qt-chip-op-btn,
+.pharos-query-page .qt-chip-agg-group,
+.pharos-query-page .qt-chip--or,
+.pharos-query-page .qt-picker-input,
+.pharos-query-page .qt-auto-refresh-select,
+.pharos-query-page .qt-op-pop,
+.pharos-query-page .qt-picker-list,
+.pharos-query-page .qt-cell-menu,
+.pharos-query-page .qt-modal,
+.pharos-query-page .qt-auto-refresh-popover { background: var(--panel); color: var(--ink); }
+.pharos-query-page .qt-chip--or { border-right-color: var(--panel); border-left-color: var(--panel); }
+.pharos-query-page .qt-row > .qt-checkbox-cell:first-child { background: var(--panel); }
+.pharos-query-page .cm-editor { background: var(--panel); color: var(--ink); }
+.pharos-query-page .qt-btn--primary { color: var(--panel); background: var(--accent); }
 /* The component's stock GitHub blues and its OS-driven dark dialog palette
    otherwise leak through on hover and in the Edit columns dialog. */
-.alexandria-query-page .qt-btn--primary:hover:not(:disabled) { background: var(--accent-deep); border-color: var(--accent-deep); }
+.pharos-query-page .qt-btn--primary:hover:not(:disabled) { background: var(--accent-deep); border-color: var(--accent-deep); }
 .qt-chip-priority { color: var(--panel); }
 :root .qt-select-editor { color-scheme: inherit; --qt-bg: var(--panel); --qt-bg-muted: color-mix(in srgb, var(--bg) 76%, var(--panel)); --qt-fg: var(--ink); --qt-text: var(--ink); --qt-muted: var(--muted); --qt-border: var(--line); --qt-border-subtle: color-mix(in srgb, var(--line) 62%, transparent); --qt-header-bg: color-mix(in srgb, var(--bg) 76%, var(--panel)); --qt-accent: var(--accent); --qt-accent-bg: color-mix(in srgb, var(--accent) 12%, var(--panel)); --qt-cell-hover: color-mix(in srgb, var(--gold) 8%, transparent); --qt-error: var(--bad); }
 :root .qt-select-editor .qt-primary { border-color: var(--accent); background: var(--accent); color: var(--panel); }
 :root .qt-type-badge,:root .qt-select-editor .qt-type-badge { background: color-mix(in srgb, var(--accent) 14%, var(--panel)); color: var(--ink); }
 :root .qt-editor-notice,:root .qt-select-editor .qt-editor-notice { color: var(--sea); }
-.alexandria-query-page .qt-link { color: var(--accent); }
-.alexandria-query-page .qt-metrics { margin: 0; }
-.alexandria-query-page .qt-cell { vertical-align: middle; }
-.alexandria-query-page .qt-cell button { padding: 1px 4px; }
+.pharos-query-page .qt-link { color: var(--accent); }
+.pharos-query-page .qt-metrics { margin: 0; }
+.pharos-query-page .qt-cell { vertical-align: middle; }
+.pharos-query-page .qt-cell button { padding: 1px 4px; }
 .qt-pr-list { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .qt-pr-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; white-space: normal; }
 /* Query-table's stock share action owns the global `q` URL parameter. Three
    tables coexist in this single-page shell, so sharing stays hidden until the
    component supports a per-table parameter namespace. Saved views remain local. */
-.alexandria-query-page .qt-qb button[title="Copy a URL for this query"] { display: none; }
+.pharos-query-page .qt-qb button[title="Copy a URL for this query"] { display: none; }
 
 .semantic-search { display: flex; gap: 9px; width: min(760px, 100%); margin: 0 0 14px; }
 .semantic-search input { flex: 1; min-width: 120px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--ink); padding: 6px 12px; }

@@ -94,7 +94,7 @@
     {key: 'dca', label: 'DC · DCA', lat: 38.8512, lon: -77.0402},
     {key: 'bos', label: 'Boston · BOS', lat: 42.3656, lon: -71.0096},
   ];
-  const STORE = 'alexandria-carbon-v1';
+  const STORE = 'pharos-carbon-v1';
 
   const node = (tag, cls, text) => {
     const n = document.createElement(tag);

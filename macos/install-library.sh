@@ -35,7 +35,7 @@ if [ -e "$DIR" ] && [ ! -d "$DIR" ]; then
 fi
 [ -d "$DIR" ] && DIR=$(CDPATH= cd -- "$DIR" && pwd -P)
 APP="$DIR/Pharos.app"
-CLI="$APP/Contents/MacOS/alexandria"
+CLI="$APP/Contents/MacOS/pharos"
 
 # launch.sh rebuilds and opens dist/Pharos.app for the per-user configuration;
 # a library.toml beside it would silently take that app over.

@@ -269,7 +269,7 @@ var shellSubcommandPrograms = map[string]bool{
 	"git": true, "go": true, "npm": true, "pnpm": true, "yarn": true, "bun": true, "cargo": true, "docker": true,
 	"kubectl": true, "gh": true, "brew": true, "pip": true, "pip3": true, "uv": true, "poetry": true, "make": true,
 	"gcloud": true, "aws": true, "terraform": true, "swift": true, "deno": true, "npx": true, "bunx": true, "pnpx": true,
-	"rustup": true, "conda": true, "apt": true, "apt-get": true, "systemctl": true, "launchctl": true, "alexandria": true,
+	"rustup": true, "conda": true, "apt": true, "apt-get": true, "systemctl": true, "launchctl": true, "pharos": true,
 	"tl1": true, "claude": true, "codex": true, "gradle": true, "mvn": true, "dotnet": true, "helm": true, "firebase": true,
 	"vercel": true, "supabase": true, "prisma": true, "turbo": true, "nx": true, "just": true, "task": true, "xcodebuild": false,
 	"sqlite3": false, "defaults": true, "security": true, "diskutil": true, "hdiutil": true, "codesign": false, "open": false,

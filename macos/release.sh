@@ -7,7 +7,7 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
-REPO=gbdubs/alexandria
+REPO=gbdubs/pharos
 VERSION=${1:-}
 if [ "$#" -lt 1 ] || [ "$#" -gt 2 ] || ! printf '%s\n' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
     echo "Usage: $0 major.minor.patch [--developer-id]" >&2

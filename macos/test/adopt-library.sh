@@ -51,13 +51,13 @@ trap cleanup EXIT INT TERM
 fail() { echo "FAIL: $*" >&2; [ -f "$WORK/legacy.log" ] && sed 's/^/  legacy service: /' "$WORK/legacy.log" | tail -20 >&2; exit 1; }
 pass() { echo "ok: $*"; }
 
-echo "Building alexandria and the legacy build ($REF)…"
-(cd "$ROOT" && GOTOOLCHAIN=local go build -o "$WORK/alexandria" ./cmd/alexandria)
+echo "Building pharos and the legacy build ($REF)…"
+(cd "$ROOT" && GOTOOLCHAIN=local go build -o "$WORK/pharos" ./cmd/pharos)
 mkdir "$WORK/legacy-src"
 git -C "$ROOT" archive "$REF" | tar -x -C "$WORK/legacy-src"
-(cd "$WORK/legacy-src" && GOTOOLCHAIN=local go build -o "$WORK/alexandria-legacy" ./cmd/alexandria)
-CLI="$WORK/alexandria"
-LEGACY="$WORK/alexandria-legacy"
+(cd "$WORK/legacy-src" && GOTOOLCHAIN=local go build -o "$WORK/pharos-legacy" ./cmd/alexandria)
+CLI="$WORK/pharos"
+LEGACY="$WORK/pharos-legacy"
 
 # sessions DIR FIRST COUNT writes Claude Code transcripts s<FIRST>… of 20
 # messages each; every message of session N contains the word adoptmarkerN.
@@ -74,7 +74,7 @@ sessions() {
     done
 }
 
-LEGACY_DIR="$WORK/AI Work Archive"
+LEGACY_DIR="$WORK/Pharos"
 CONFIG="$LEGACY_DIR/archive.toml"
 PROJECTS="$WORK/home/.claude/projects/-Users-test-project"
 TOKEN=adopt-test-token

@@ -8,7 +8,7 @@ import (
 )
 
 func TestRepositoryFromWorktree(t *testing.T) {
-	repo := filepath.Join(t.TempDir(), "alexandria")
+	repo := filepath.Join(t.TempDir(), "pharos")
 	if err := os.Mkdir(repo, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -25,19 +25,19 @@ func TestRepositoryFromWorktree(t *testing.T) {
 	worktree := filepath.Join(t.TempDir(), "halifax")
 	git("worktree", "add", "-qb", "halifax", worktree)
 	got := repositoryFromLocation(worktree, "")
-	if got == nil || got["display_name"] != "alexandria" {
+	if got == nil || got["display_name"] != "pharos" {
 		t.Fatalf("repository = %#v", got)
 	}
-	git("remote", "add", "origin", "git@github.com:example/alexandria.git")
+	git("remote", "add", "origin", "git@github.com:example/pharos.git")
 	got = repositoryFromLocation(worktree, "")
-	if got["display_name"] != "alexandria" || got["canonical_remote"] != "git@github.com:example/alexandria.git" {
+	if got["display_name"] != "pharos" || got["canonical_remote"] != "git@github.com:example/pharos.git" {
 		t.Fatalf("repository with remote = %#v", got)
 	}
 }
 
 func TestRepositoryFromMissingConductorWorkspace(t *testing.T) {
-	got := repositoryFromLocation("/old/conductor/workspaces/alexandria/halifax", "")
-	if got == nil || got["display_name"] != "alexandria" {
+	got := repositoryFromLocation("/old/conductor/workspaces/pharos/halifax", "")
+	if got == nil || got["display_name"] != "pharos" {
 		t.Fatalf("repository = %#v", got)
 	}
 	if got := repositoryFromLocation("/old/unknown/halifax", ""); got != nil {

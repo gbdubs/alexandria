@@ -48,7 +48,7 @@ func (c *Catalog) pricingRefreshPrompt(health map[string]any) string {
 	latest, _ := queryMaps(c.DB, `SELECT provider,MAX(effective_from) effective_from,MAX(retrieved_at) retrieved_at,COUNT(*) rows
 		FROM cost_changes WHERE status<>'rejected' GROUP BY provider ORDER BY provider`)
 	repository := pricingRepository()
-	location := "the Pharos repository (https://github.com/gbdubs/alexandria)"
+	location := "the Pharos repository (https://github.com/gbdubs/pharos)"
 	if repository != "" {
 		location = "the Pharos repository at `" + repository + "`"
 	}
@@ -109,7 +109,7 @@ func (c *Catalog) pricingRefreshPrompt(health map[string]any) string {
 	} else {
 		prompt.WriteString("Run `go test ./internal/archive -run 'Pricing|Price|Cost'` from the repository root and fix any problems it reports. ")
 	}
-	prompt.WriteString("`go run ./cmd/alexandria pricing check` also validates the file and lists models that are still unpriced.\n\n")
+	prompt.WriteString("`go run ./cmd/pharos pricing check` also validates the file and lists models that are still unpriced.\n\n")
 	prompt.WriteString("Finish with a table of every row you added (model or alias, effective_from, rates, source URL), plus anything you couldn't source and why. Don't commit. I'll review, confirm rows, and rebuild with `./launch.sh` so the app picks up the new prices.\n")
 	return prompt.String()
 }

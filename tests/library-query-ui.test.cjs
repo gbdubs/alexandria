@@ -6,7 +6,7 @@ const { createRequire } = require('node:module');
 
 const root = path.resolve(__dirname, '..');
 const { chromium } = createRequire(path.join(root, '.context/browser-tests/package.json'))('playwright');
-const source = fs.readFileSync(['src/ai_work_archive/ui.py', 'internal/archive/assets/ui.py'].map(name => path.join(root, name)).find(file => fs.existsSync(file)), 'utf8');
+const source = fs.readFileSync(['src/pharos/ui.py', 'internal/archive/assets/ui.py'].map(name => path.join(root, name)).find(file => fs.existsSync(file)), 'utf8');
 const html = source.slice(source.indexOf("r'''") + 4, source.lastIndexOf("'''"));
 
 test('annotation controls stay above a native modal and return to the page when it closes', async () => {

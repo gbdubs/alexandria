@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"alexandria/internal/archive"
+	"github.com/gbdubs/pharos/internal/archive"
 )
 
 func main() {

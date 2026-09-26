@@ -97,7 +97,7 @@ const when = (value: unknown) => {
 const indexed = (installations: Row[] = []) => installations.length > 1
   ? `Indexed ${installations.map(item => `${item.host_label || "an unknown Mac"} ${when(item.synced_at)}`).join(", ")}`
   : `Indexed ${when(installations[0]?.synced_at)}`;
-const openWork = (id: unknown) => { if (id) window.alexandriaOpenDetail?.(String(id)); };
+const openWork = (id: unknown) => { if (id) window.pharosOpenDetail?.(String(id)); };
 const typing = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || ["SELECT", "TEXTAREA"].includes(target.tagName)
   || (target instanceof HTMLInputElement && !["checkbox", "radio", "button"].includes(target.type)));
 
@@ -377,8 +377,8 @@ export function TL1Page({ attempts, filterAttempts, copy }: Props) {
   }, []);
   useEffect(() => {
     void loadInstallations();
-    window.addEventListener("alexandria:route", loadInstallations);
-    return () => window.removeEventListener("alexandria:route", loadInstallations);
+    window.addEventListener("pharos:route", loadInstallations);
+    return () => window.removeEventListener("pharos:route", loadInstallations);
   }, [loadInstallations]);
 
   const current = projects.find(item => item.project === project) ?? projects[0];

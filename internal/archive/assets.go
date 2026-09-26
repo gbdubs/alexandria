@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// assets contains the existing catalog contract and the existing Alexandria UI.
+// assets contains the existing catalog contract and the existing Pharos UI.
 // Keeping both embedded makes the service a single, relocatable executable.
 //
 //go:embed assets

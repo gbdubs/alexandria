@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"alexandria/internal/querytable"
+	"github.com/gbdubs/pharos/internal/querytable"
 )
 
 func TestParseShellCommand(t *testing.T) {

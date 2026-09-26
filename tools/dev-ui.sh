@@ -77,4 +77,4 @@ if [ "$WATCH" -eq 1 ]; then
     WATCHER=$!
     trap 'kill "$WATCHER" 2>/dev/null || true' EXIT INT TERM
 fi
-go run ./cmd/alexandria --config "$CONFIG" dev-ui --assets "$ROOT/internal/archive/assets" "$@"
+go run ./cmd/pharos --config "$CONFIG" dev-ui --assets "$ROOT/internal/archive/assets" "$@"

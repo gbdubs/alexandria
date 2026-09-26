@@ -21,7 +21,7 @@ func TestConfigResolvesRelativePathsAgainstConfigDirectory(t *testing.T) {
 	config := `data_dir = "data"
 archive_root = "preserved"
 staging_root = "../staging"
-executable = "Pharos.app/Contents/MacOS/alexandria"
+executable = "Pharos.app/Contents/MacOS/pharos"
 
 [[sources]]
 name = "relative"
@@ -58,7 +58,7 @@ kind = "codex"
 		"catalog":     {loaded.CatalogPath, filepath.Join(library, "data", "catalog.sqlite3")},
 		"archive":     {loaded.ArchiveRoot, filepath.Join(library, "preserved")},
 		"staging":     {loaded.StagingRoot, filepath.Join(root, "staging")},
-		"executable":  {loaded.Executable, filepath.Join(library, "Pharos.app", "Contents", "MacOS", "alexandria")},
+		"executable":  {loaded.Executable, filepath.Join(library, "Pharos.app", "Contents", "MacOS", "pharos")},
 		"source rel":  {loaded.Sources[0].Path, filepath.Join(library, "captures", "claude")},
 		"source home": {loaded.Sources[1].Path, filepath.Join(home, ".codex")},
 		"source abs":  {loaded.Sources[2].Path, "/absolute/codex"},
@@ -75,7 +75,7 @@ kind = "codex"
 
 func TestLibraryConfigIsDiscoveredBesideAppBundle(t *testing.T) {
 	root := t.TempDir()
-	executable := filepath.Join(root, "Pharos.app", "Contents", "MacOS", "alexandria")
+	executable := filepath.Join(root, "Pharos.app", "Contents", "MacOS", "pharos")
 	if err := os.MkdirAll(filepath.Dir(executable), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -94,9 +94,9 @@ func TestLibraryConfigIsDiscoveredBesideAppBundle(t *testing.T) {
 	}
 	for _, other := range []string{
 		"",
-		filepath.Join(root, "alexandria"),
-		filepath.Join(root, "Pharos.app", "Contents", "Resources", "alexandria"),
-		filepath.Join(root, "Pharos", "Contents", "MacOS", "alexandria"),
+		filepath.Join(root, "pharos"),
+		filepath.Join(root, "Pharos.app", "Contents", "Resources", "pharos"),
+		filepath.Join(root, "Pharos", "Contents", "MacOS", "pharos"),
 	} {
 		if got := libraryConfigBeside(other); got != "" {
 			t.Errorf("executable %q outside an app bundle discovered %q", other, got)

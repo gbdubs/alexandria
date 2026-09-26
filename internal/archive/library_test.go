@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"alexandria/internal/querytable"
+	"github.com/gbdubs/pharos/internal/querytable"
 )
 
 // libraryFixture creates three workspaces touching every derived-column
@@ -18,7 +18,7 @@ func libraryFixture(t *testing.T) (*Catalog, Config) {
 	t.Helper()
 	catalog, config := testCatalog(t)
 	statements := []string{
-		`INSERT INTO repositories(id,display_name,created_at,updated_at) VALUES('repo','alexandria','x','x')`,
+		`INSERT INTO repositories(id,display_name,created_at,updated_at) VALUES('repo','pharos','x','x')`,
 		`INSERT INTO workspaces(id,source_kind,source_account,source_id,repository_id,title,branch,activity_at,indexed_at) VALUES
 			('a','codex','local','a','repo','Alpha','main','2026-09-23T03:00:00Z','x'),
 			('b','tl1','local','b','repo','Bravo',NULL,'2026-09-23T01:00:00Z','x'),

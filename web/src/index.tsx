@@ -4,7 +4,7 @@ import { decodeQuery, encodeQuery, loadSchema, localStorageAdapter, toAggregatio
 import { useQueryTable, type QueryTableApi } from "@pythia-software/query-table-react";
 import { DataTable, FilterValueProvider, MetricsPanel, QueryBuilder, defaultRenderers, type CellContext, type FilterValuePresentation, type RenderRegistry } from "@pythia-software/query-table-ui";
 import "@pythia-software/query-table-ui/theme.css";
-import "./alexandria.css";
+import "./pharos.css";
 import libraryDocument from "../../schemas/library.schema.json";
 import usageDocument from "../../schemas/usage.schema.json";
 import writingDocument from "../../schemas/writing.schema.json";
@@ -27,7 +27,7 @@ type PullRequest = { number: number; title?: string | null; url?: string | null;
 function ResultMessage({ label, message, kind }: { label: string; message: TranscriptMessage; kind: "human" | "assistant" }) {
   const body = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const card = window.alexandriaMessageCard?.(message);
+    const card = window.pharosMessageCard?.(message);
     if (card) body.current?.replaceChildren(card);
     else if (body.current) body.current.textContent = String(message.text ?? "");
   }, [message.role, message.text, message.raw_text]);
@@ -87,18 +87,18 @@ function updateURI(name: string, value: string) {
   else url.searchParams.delete(name);
   if (url.href !== window.location.href) {
     history.replaceState(null, "", url);
-    window.dispatchEvent(new Event("alexandria:uri-changed"));
+    window.dispatchEvent(new Event("pharos:uri-changed"));
   }
 }
 
 declare global {
   interface Window {
-    alexandriaOpenDetail?: (id: string) => void;
-    alexandriaCopyText?: (text: string) => Promise<void>;
-    alexandriaMessageCard?: (message: TranscriptMessage) => HTMLElement;
-    alexandriaTurnSummaries?: (conversation: Row) => TurnSummary[];
+    pharosOpenDetail?: (id: string) => void;
+    pharosCopyText?: (text: string) => Promise<void>;
+    pharosMessageCard?: (message: TranscriptMessage) => HTMLElement;
+    pharosTurnSummaries?: (conversation: Row) => TurnSummary[];
     pharosCarbon?: { refresh: () => Promise<void> };
-    alexandriaQueryTables?: {
+    pharosQueryTables?: {
       refresh: (dataset: Dataset) => void;
       filterRepository: (repository: string) => void;
       filterModel: (model: string) => void;
@@ -175,7 +175,7 @@ const renderers: RenderRegistry<Row> = {
   work_title({ value, row }: CellContext<Row>) {
     return <button className="qt-work-link" title={String(value ?? "")} onClick={(event) => {
       event.stopPropagation();
-      window.alexandriaOpenDetail?.(String(row.workspace_id ?? row.id));
+      window.pharosOpenDetail?.(String(row.workspace_id ?? row.id));
     }}>{String(value ?? "Untitled work")}</button>;
   },
   pull_requests({ value, row }: CellContext<Row>) {
@@ -320,8 +320,8 @@ function QuerySurface({ dataset, libraryView = "table", trailing, header }: { da
       firstRouteQuery.current = false;
     };
     restore();
-    window.addEventListener("alexandria:route", restore);
-    return () => window.removeEventListener("alexandria:route", restore);
+    window.addEventListener("pharos:route", restore);
+    return () => window.removeEventListener("pharos:route", restore);
   }, [dataset]);
   const initialQuery = useRef(true);
   useEffect(() => {
@@ -357,7 +357,7 @@ function QuerySurface({ dataset, libraryView = "table", trailing, header }: { da
 function conversationTurns(work: Row): ConversationTurn[] {
   return (work.conversations ?? []).flatMap((conversation: Row, index: number) => {
     const provider = String(conversation.provider ?? "Agent");
-    return (window.alexandriaTurnSummaries?.(conversation) ?? [])
+    return (window.pharosTurnSummaries?.(conversation) ?? [])
       .filter(summary => summary.human)
       .map((summary, turn) => ({ provider, conversation: index + 1, turn: turn + 1, input: summary.human, response: summary.response }));
   });
@@ -408,7 +408,7 @@ function ConversationResultCard({ row }: { row: Row }) {
   return <article className="conversation-result-card">
     <div className="conversation-result-head">
       <div className="conversation-result-summary">
-        <button className="conversation-result-title" type="button" onClick={() => window.alexandriaOpenDetail?.(String(row.id))}>{String(row.title ?? "Untitled work")}</button>
+        <button className="conversation-result-title" type="button" onClick={() => window.pharosOpenDetail?.(String(row.id))}>{String(row.title ?? "Untitled work")}</button>
         <div className="conversation-result-meta">{[row.repository_name, row.source_kind, models.join(", "), row.activity_at ? new Date(row.activity_at).toLocaleDateString() : ""].filter(Boolean).join(" · ")}</div>
         <div className="conversation-result-facts">
           <span className="conversation-result-count">{turnCount} turn{turnCount === 1 ? "" : "s"}</span>
@@ -425,7 +425,7 @@ function ConversationResultCard({ row }: { row: Row }) {
         </div>
       </div>
       <div className="conversation-result-actions">
-        <button type="button" onClick={() => window.alexandriaOpenDetail?.(String(row.id))}>Open full conversation</button>
+        <button type="button" onClick={() => window.pharosOpenDetail?.(String(row.id))}>Open full conversation</button>
         <button type="button" onClick={() => setBrowse((value) => !value)} disabled={!turnCount} aria-expanded={browse}>{browse ? "Close turn browser" : "Browse turns"}</button>
       </div>
     </div>
@@ -497,10 +497,10 @@ function LibraryPage() {
   const [separators, setSeparators] = useState(() => read().get("separators") === "1");
   const [view, setView] = useState<LibraryView>(() => read().get("view") === "conversation" ? "conversation" : "table");
   useEffect(() => { clearLibrarySearch = () => { setDraft(""); setSearch(""); updateURI("search", ""); }; return () => { clearLibrarySearch = undefined; }; }, []);
-  useEffect(() => { const restore = () => { const params = read(); const q = params.get("search") ?? ""; setDraft(q); setSearch(q); setKind((params.get("kind") as FindKind) || "text"); setFuzzy(params.get("fuzzy") !== "0"); setCaseSensitive(params.get("case") === "1"); setSeparators(params.get("separators") === "1"); setView(params.get("view") === "conversation" ? "conversation" : "table"); }; window.addEventListener("alexandria:route", restore); return () => window.removeEventListener("alexandria:route", restore); }, []);
+  useEffect(() => { const restore = () => { const params = read(); const q = params.get("search") ?? ""; setDraft(q); setSearch(q); setKind((params.get("kind") as FindKind) || "text"); setFuzzy(params.get("fuzzy") !== "0"); setCaseSensitive(params.get("case") === "1"); setSeparators(params.get("separators") === "1"); setView(params.get("view") === "conversation" ? "conversation" : "table"); }; window.addEventListener("pharos:route", restore); return () => window.removeEventListener("pharos:route", restore); }, []);
   function submit(event: FormEvent) { event.preventDefault(); const next = draft.trim(); setSearch(next); updateURI("search", next); }
   function chooseView(next: LibraryView) { setView(next); updateURI("view", next === "conversation" ? next : ""); }
-  return <div className="alexandria-query-page">
+  return <div className="pharos-query-page">
     <div className="view-heading library-heading"><div><h1>Find past work</h1></div>{!search ? <div className="library-view-toggle" role="group" aria-label="Library result view"><button type="button" className={view === "table" ? "active" : ""} aria-pressed={view === "table"} onClick={() => chooseView("table")}>Table</button><button type="button" className={view === "conversation" ? "active" : ""} aria-pressed={view === "conversation"} onClick={() => chooseView("conversation")}>Conversations</button></div> : null}</div>
     <form className="semantic-search" onSubmit={submit}><select aria-label="Search type" value={kind} onChange={event => { const next = event.target.value as FindKind; setKind(next); updateURI("kind", next === "text" ? "" : next); }}><option value="text">Conversation text</option><option value="file">Modified file</option><option value="url">Tool URL</option></select><input type="search" value={draft} onChange={event => setDraft(event.target.value)} placeholder={kind === "text" ? "Words or an exact phrase in quotes…" : kind === "file" ? "File path or name…" : "URL or host…"} aria-label="Search library" /><button type="submit">Search</button></form>
     {kind === "text" ? <div className="search-options" role="group" aria-label="Text search options"><label><input type="checkbox" checked={fuzzy} onChange={event => { setFuzzy(event.target.checked); updateURI("fuzzy", event.target.checked ? "" : "0"); }} /> Fuzzy words</label><label><input type="checkbox" checked={caseSensitive} onChange={event => { setCaseSensitive(event.target.checked); updateURI("case", event.target.checked ? "1" : ""); }} /> Case sensitive</label><label title="For quoted phrases, require punctuation and spaces exactly as typed"><input type="checkbox" checked={separators} onChange={event => { setSeparators(event.target.checked); updateURI("separators", event.target.checked ? "1" : ""); }} /> Match separators</label></div> : null}
@@ -602,8 +602,8 @@ function RefreshPricesButton() {
     const controller = new AbortController();
     const load = () => void fetch("/api/pricing", { signal: controller.signal }).then(responseJSON<PricingStatus>).then(setStatus).catch(() => {});
     load();
-    window.addEventListener("alexandria:usage-refresh", load);
-    return () => { controller.abort(); window.removeEventListener("alexandria:usage-refresh", load); };
+    window.addEventListener("pharos:usage-refresh", load);
+    return () => { controller.abort(); window.removeEventListener("pharos:usage-refresh", load); };
   }, []);
   const unpriced = status?.unpriced_models ?? [];
   const fresh = unpriced.filter((model) => !acknowledged.has(model.model));
@@ -811,8 +811,8 @@ function useAggregations(dataset: Dataset, where: WhereTerm[], aggregations: Agg
   const [refresh, setRefresh] = useState(0);
   useEffect(() => {
     const bump = () => setRefresh(value => value + 1);
-    window.addEventListener("alexandria:usage-refresh", bump);
-    return () => window.removeEventListener("alexandria:usage-refresh", bump);
+    window.addEventListener("pharos:usage-refresh", bump);
+    return () => window.removeEventListener("pharos:usage-refresh", bump);
   }, []);
   useEffect(() => {
     const controller = new AbortController();
@@ -1000,8 +1000,8 @@ function useAuthorshipStatus(onBuilt: () => void): AuthorshipStatus | null {
       } catch { /* the status line stays as it was */ }
     };
     void load();
-    window.addEventListener("alexandria:usage-refresh", load);
-    return () => { live = false; window.clearTimeout(timer); window.removeEventListener("alexandria:usage-refresh", load); };
+    window.addEventListener("pharos:usage-refresh", load);
+    return () => { live = false; window.clearTimeout(timer); window.removeEventListener("pharos:usage-refresh", load); };
   }, []);
   return status;
 }
@@ -1111,8 +1111,8 @@ function CarbonImpact() {
   useEffect(() => {
     const refresh = () => { void window.pharosCarbon?.refresh(); };
     refresh();
-    window.addEventListener("alexandria:usage-refresh", refresh);
-    return () => window.removeEventListener("alexandria:usage-refresh", refresh);
+    window.addEventListener("pharos:usage-refresh", refresh);
+    return () => window.removeEventListener("pharos:usage-refresh", refresh);
   }, []);
   return <section aria-label="Carbon Impact" data-feedback-label="Carbon Impact">
     <div id="carbonCard" className="carbon-card" aria-busy="true" />
@@ -1124,12 +1124,12 @@ function UsagePage() {
   const [status, setStatus] = useState<AuthorshipStatus | null>(null);
   useEffect(() => {
     const restore = () => { if (location.pathname === "/usage") setView(initialUsageView()); };
-    window.addEventListener("alexandria:route", restore);
-    return () => window.removeEventListener("alexandria:route", restore);
+    window.addEventListener("pharos:route", restore);
+    return () => window.removeEventListener("pharos:route", restore);
   }, []);
   function choose(next: UsageView) { setView(next); store(usageViewKey, next); updateURI("usage", next === "writing" ? next : ""); }
   const statusText = !status ? "" : status.error ? `Last update failed: ${status.error}` : status.running ? "Updating…" : status.built_at ? `Updated ${new Date(status.built_at).toLocaleString()}` : "Waiting to build";
-  return <div className="alexandria-query-page usage-page">
+  return <div className="pharos-query-page usage-page">
     <div className="view-heading library-heading usage-heading">
       <div><h1>Usage</h1><p className="muted">{view === "tokens"
         ? "Reconciled tokens per agent session, day, and model. Input includes cached input; filter to any provider, model, or repository and the chart follows. Cost is the API list-price equivalent on the day of use, at standard rates. It ignores long-context premiums and subscriptions, so treat it as a lower bound. ≈ marks costs priced by assumption."
@@ -1181,8 +1181,8 @@ function MCPPage() {
     void refresh();
     const onRoute = () => { if (location.pathname === "/mcp") void refresh(); };
     const timer = window.setInterval(() => { if (document.querySelector("#mcp.active")) void refresh(); }, 5000);
-    window.addEventListener("alexandria:route", onRoute);
-    return () => { window.clearInterval(timer); window.removeEventListener("alexandria:route", onRoute); };
+    window.addEventListener("pharos:route", onRoute);
+    return () => { window.clearInterval(timer); window.removeEventListener("pharos:route", onRoute); };
   }, []);
 
   async function toggle() {
@@ -1198,7 +1198,7 @@ function MCPPage() {
   }
 
   async function copy(label: string, value: string) {
-    try { if (window.alexandriaCopyText) await window.alexandriaCopyText(value); else await navigator.clipboard.writeText(value); setCopied(label); window.setTimeout(() => setCopied(""), 2000); }
+    try { if (window.pharosCopyText) await window.pharosCopyText(value); else await navigator.clipboard.writeText(value); setCopied(label); window.setTimeout(() => setCopied(""), 2000); }
     catch { setError("Could not copy to clipboard. Select the text and copy it manually."); }
   }
 
@@ -1209,7 +1209,7 @@ function MCPPage() {
   const connection = status ? JSON.stringify({ mcpServers: { pharos: { command: status.command, args: status.args } } }, null, 2) : "";
   const prompt = status ? `Add Pharos as a local stdio MCP server. Use search_conversations first, with a small limit and max_output_tokens budget. Open get_conversation_overview for promising results, search_conversation_passages for a specific topic, and get_conversation_messages only around cited message IDs. Treat previews as leads and inspect the cited evidence before relying on an outcome. Pharos is read-only. If its tools are unavailable, enable MCP in the Pharos app and reconnect this agent client.\n\nConnection definition:\n${connection}` : "";
   const stats = history?.stats;
-  return <div className="mcp-page alexandria-query-page">
+  return <div className="mcp-page pharos-query-page">
     <div className="view-heading"><div><h1>MCP</h1><p className="muted">Let local agents search past conversations in small steps. Review calls to spot oversized responses and failed queries.</p></div><button type="button" className="mcp-refresh" onClick={() => { void refresh(); tableApis.get("mcp_calls")?.refresh(); }}>Refresh</button></div>
     {error ? <div className="query-table-error" role="alert">{error}</div> : null}
     <section className="mcp-card mcp-status-card" aria-label="MCP availability">
@@ -1338,7 +1338,7 @@ function ToolCallDialog({ id, onClose }: { id: string; onClose: () => void }) {
   const number = (value: unknown) => value === null || value === undefined ? "—" : Number(value).toLocaleString();
   return <div className="mcp-dialog-backdrop" onClick={onClose}><div className="mcp-dialog tool-dialog" role="dialog" aria-modal="true" aria-label="Tool call details" onClick={event => event.stopPropagation()}>
     <div className="mcp-card-heading"><div><h2>{call ? String(call.tool_name) : "Tool call"}</h2><p className="muted">{call ? `${new Date(String(call.started_at)).toLocaleString()} · ${call.status}${call.error_type ? ` · ${String(call.error_type).replace(/_/g, " ")}` : ""}` : error || "Loading…"}</p></div>
-      <div className="tool-dialog-actions">{call?.workspace_id ? <button type="button" onClick={() => { onClose(); window.alexandriaOpenDetail?.(String(call.workspace_id)); }}>Open work</button> : null}<button type="button" onClick={onClose}>Close</button></div></div>
+      <div className="tool-dialog-actions">{call?.workspace_id ? <button type="button" onClick={() => { onClose(); window.pharosOpenDetail?.(String(call.workspace_id)); }}>Open work</button> : null}<button type="button" onClick={onClose}>Close</button></div></div>
     {call ? <>
       <dl className="tool-facts">
         <div><dt>Duration</dt><dd>{formatDurationMS(call.duration_ms)}{call.duration_source === "timestamps" ? " (timestamps)" : ""}</dd></div>
@@ -1421,7 +1421,7 @@ function ToolsPage() {
     tableApis.get("tool_calls")?.setQuery(previous => ({ ...previous, where: drillFilters(row), aggregations: [], offset: 0 }));
     choose("calls");
   }
-  return <div className="alexandria-query-page tools-page">
+  return <div className="pharos-query-page tools-page">
     <div className="view-heading library-heading"><div><h1>Tool use</h1><p className="muted">Every tool call from retained transcripts, joined to its result. Shell commands are parsed into program, subcommand, and category. <b>Context added</b> is what a result grew the next request’s prompt by (measured from provider usage, or estimated from size at 4 bytes a token); <b>context carried</b> counts it again for every later request until compaction. Claude durations come from timestamps and include any wait for approval. Linked mirrors of the same work are counted once.</p></div>
       <div className="library-view-toggle" role="group" aria-label="Tool view">
         <button type="button" className={view === "calls" ? "active" : ""} aria-pressed={view === "calls"} onClick={() => choose("calls")}>Calls</button>
@@ -1459,12 +1459,12 @@ for (const [id, component] of mounts) {
   const element = document.getElementById(id);
   if (element) createRoot(element).render(component);
 }
-window.alexandriaQueryTables = {
+window.pharosQueryTables = {
   refresh(dataset) {
     tableApis.get(dataset)?.refresh();
     if (dataset === "usage") {
       tableApis.get("writing")?.refresh();
-      window.dispatchEvent(new Event("alexandria:usage-refresh"));
+      window.dispatchEvent(new Event("pharos:usage-refresh"));
     }
   },
   filterRepository(repository) {

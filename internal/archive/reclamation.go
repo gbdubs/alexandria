@@ -170,7 +170,7 @@ func (s *Server) serveProtect(w http.ResponseWriter, path string, body map[strin
 	writeResult(w, map[string]any{"ok": err == nil, "workspace_id": id, "mode": mode, "until_at": nilIfEmpty(until)}, err)
 }
 
-// runUpcomingCLI handled `alexandria upcoming`.
+// runUpcomingCLI handled `pharos upcoming`.
 func runUpcomingCLI(catalog *Catalog, config Config) error {
 	if _, err := catalog.RefreshUpcoming(config); err != nil {
 		return err
@@ -182,10 +182,10 @@ func runUpcomingCLI(catalog *Catalog, config Config) error {
 	return printJSON(value)
 }
 
-// runProtectCLI handled `alexandria protect`.
+// runProtectCLI handled `pharos protect`.
 func runProtectCLI(catalog *Catalog, config Config, args []string) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: alexandria protect {repository,workspace,work_item} ID [--snooze-until DATE] [--reason TEXT] [--remove]")
+		return fmt.Errorf("usage: pharos protect {repository,workspace,work_item} ID [--snooze-until DATE] [--reason TEXT] [--remove]")
 	}
 	scopeType, scopeID := args[0], args[1]
 	if scopeType != "repository" && scopeType != "workspace" && scopeType != "work_item" {

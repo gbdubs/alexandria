@@ -17,7 +17,7 @@ test('MCP page explains connection, shows call history, and gates access', async
     const page = await browser.newPage({ viewport: { width: 1360, height: 1600 } });
     const errors = [];
     let enabled = true;
-    await page.addInitScript(() => { window.webkit = { messageHandlers: { alexandriaClipboard: { postMessage: async text => { window.__copiedText = text; } } } }; });
+    await page.addInitScript(() => { window.webkit = { messageHandlers: { pharosClipboard: { postMessage: async text => { window.__copiedText = text; } } } }; });
     page.on('pageerror', error => errors.push(error.message));
     await page.route('http://mcp.test/**', route => {
       const request = route.request();
@@ -25,7 +25,7 @@ test('MCP page explains connection, shows call history, and gates access', async
       if (url.pathname === '/mcp') return route.fulfill({ contentType: 'text/html', body: html });
       if (url.pathname === '/assets/query-tables.js') return route.fulfill({ contentType: 'application/javascript', body: fs.readFileSync(path.join(root, 'internal/archive/assets/query-tables.js')) });
       if (url.pathname === '/assets/query-tables.css') return route.fulfill({ contentType: 'text/css', body: fs.readFileSync(path.join(root, 'internal/archive/assets/query-tables.css')) });
-      if (url.pathname === '/api/mcp' && request.method() === 'GET') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ enabled, transport: 'stdio', command: '/Applications/Alexandria.app/Contents/MacOS/alexandria', args: ['--config', '/tmp/archive.toml', 'mcp'], note: 'Agent clients launch this local command when they connect.' }) });
+      if (url.pathname === '/api/mcp' && request.method() === 'GET') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ enabled, transport: 'stdio', command: '/Applications/Pharos.app/Contents/MacOS/pharos', args: ['--config', '/tmp/archive.toml', 'mcp'], note: 'Agent clients launch this local command when they connect.' }) });
       if (url.pathname === '/api/mcp/calls') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: [{ id: 1, called_at: '2026-09-24T12:00:00Z', tool_name: 'search_conversations', arguments_json: '{"query":"parser"}', status: 'ok', error_text: null, duration_ms: 18, response_bytes: 900, estimated_output_tokens: 300, result_count: 3, truncated: 0 }], filtered_total: 1, tool_stats: [{ tool_name: 'search_conversations', calls: 1, errors: 0, average_output_tokens: 300, largest_output_tokens: 300, truncated_calls: 0, average_duration_ms: 18 }], stats: { total_calls: 1, failed_calls: 0, average_output_tokens: 300, largest_output_tokens: 300, truncated_calls: 0 } }) });
       if (url.pathname === '/api/mcp/enabled') { enabled = JSON.parse(request.postData()).enabled; return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ enabled }) }); }
       if (url.pathname === '/api/query/mcp_calls') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ rows: [{ id: 1, called_at: '2026-09-24T12:00:00Z', tool_name: 'search_conversations', arguments_json: '{"query":"parser"}', status: 'ok', error_text: null, duration_ms: 18, response_bytes: 900, estimated_output_tokens: 300, result_count: 3, truncated: false, day: '2026-09-24', week: '2026-09-21', month: '2026-09', call_count: 1, error_count: 0, truncated_count: 0 }], total: 1 }) });

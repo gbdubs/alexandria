@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// runTL1CLI prints the TL1 analysis: `alexandria tl1 [--project NAME] [--installation ID]
+// runTL1CLI prints the TL1 analysis: `pharos tl1 [--project NAME] [--installation ID]
 // [--since latest|TIME] [--until TIME] [--days N] [--scope current] [--prompt]`. --prompt prints only the review
 // prompt, ready to paste into an agent.
 func runTL1CLI(catalog *Catalog, args []string) error {
