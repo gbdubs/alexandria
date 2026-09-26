@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql/driver"
 	"fmt"
+	"maps"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"alexandria/internal/querytable"
 	"modernc.org/sqlite"
@@ -21,6 +23,159 @@ type sqlDataset struct {
 	from    string            // FROM and JOIN clauses
 	base    string            // always-applied condition, or ""
 	columns map[string]string // field name -> SQL expression
+	// countFrom, when set, is enough to count rows whose filters read only
+	// the table aliased countAlias, sparing a join per row.
+	countFrom, countAlias string
+	// buckets maps day, week, and month fields to the timestamp they are
+	// taken from, so a filter on one can walk an index on the timestamp.
+	buckets map[string]string
+	// lookups are fields with an index that finds their few rows directly,
+	// such as IDs; filters on other fields are marked likely() (see where).
+	lookups map[string]bool
+	// cube, when set, answers what it can in place of the rows (see sqlCube).
+	cube *sqlCube
+}
+
+// sqlCube is a table of a dataset's rows grouped by fields with few values,
+// holding each group's row count and the sums and ranges of its numbers. A
+// count, metric, filter-value, or column-stats request that reads only fields
+// the cube keeps gets the same answer from it in a fraction of the time.
+type sqlCube struct {
+	from  string // FROM clause of the grouped table
+	count string // column holding each group's row count
+	// dimensions are the grouped fields and fields that follow from them, as
+	// expressions over the grouped table equal to the dataset's own.
+	dimensions map[string]string
+	// present maps fields kept only as present or absent to a column that is
+	// true when the field is non-empty. They serve is_null and is_not_null.
+	present map[string]string
+	// measures maps number and time fields to their per-group columns.
+	measures map[string]cubeMeasure
+}
+
+// cubeMeasure names a field's per-group columns: its sum (numbers only), its
+// smallest and largest non-empty values, and how many rows had one.
+type cubeMeasure struct{ sum, min, max, count string }
+
+// table is the cube as a dataset of its dimensions, with each present-only
+// field null when absent.
+func (cube *sqlCube) table() sqlDataset {
+	columns := maps.Clone(cube.dimensions)
+	for field, column := range cube.present {
+		columns[field] = "CASE WHEN " + column + " THEN 'x' END"
+	}
+	return sqlDataset{from: cube.from, columns: columns}
+}
+
+// dimensionFor returns field's expression over the cube, if it is grouped by
+// it. A nil cube has none.
+func (cube *sqlCube) dimensionFor(field string) (string, bool) {
+	if cube == nil {
+		return "", false
+	}
+	expression, ok := cube.dimensions[field]
+	return expression, ok
+}
+
+// filters reports whether the cube can apply every term.
+func (cube *sqlCube) filters(terms []querytable.WhereTerm) bool {
+	for _, term := range terms {
+		for _, clause := range term.Predicates() {
+			if _, ok := cube.dimensions[clause.Field]; ok {
+				continue
+			}
+			if _, ok := cube.present[clause.Field]; !ok || clause.Op != "is_null" && clause.Op != "is_not_null" {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// measure returns the expression over grouped rows equal to aggregation's
+// measure over the dataset's rows, if the cube has one.
+func (cube *sqlCube) measure(aggregation querytable.Aggregation, schema querytable.Schema) (string, bool) {
+	for _, field := range aggregation.GroupBy {
+		if _, ok := cube.dimensions[field]; !ok {
+			return "", false
+		}
+	}
+	if aggregation.Field == "" {
+		return "COALESCE(SUM(" + cube.count + "),0)", aggregation.Op == "count"
+	}
+	kind := schema.Fields[aggregation.Field].Kind
+	numeric := kind == querytable.Number || kind == querytable.Bool
+	if expression, ok := cube.dimensions[aggregation.Field]; ok {
+		weighted := "(" + expression + ")*" + cube.count
+		switch aggregation.Op {
+		case "count":
+			return "COALESCE(SUM(CASE WHEN NULLIF(" + expression + ",'') IS NOT NULL THEN " + cube.count + " ELSE 0 END),0)", true
+		case "count_distinct":
+			return "COUNT(DISTINCT NULLIF(" + expression + ",''))", true
+		case "sum":
+			return "SUM(" + weighted + ")", numeric
+		case "avg":
+			return "CAST(SUM(" + weighted + ") AS REAL)/SUM(CASE WHEN (" + expression + ") IS NOT NULL THEN " + cube.count + " END)", numeric
+		case "min", "max":
+			return strings.ToUpper(aggregation.Op) + "(NULLIF(" + expression + ",''))", true
+		}
+		return "", false
+	}
+	columns, ok := cube.measures[aggregation.Field]
+	if !ok {
+		return "", false
+	}
+	switch aggregation.Op {
+	case "count":
+		return "COALESCE(SUM(" + columns.count + "),0)", true
+	case "sum":
+		return "SUM(" + columns.sum + ")", numeric && columns.sum != ""
+	case "avg":
+		return "CAST(SUM(" + columns.sum + ") AS REAL)/SUM(" + columns.count + ")", numeric && columns.sum != ""
+	case "min":
+		return "MIN(" + columns.min + ")", true
+	case "max":
+		return "MAX(" + columns.max + ")", true
+	}
+	return "", false
+}
+
+var sqlQualifier = regexp.MustCompile(`([A-Za-z_]\w*)\.[A-Za-z_]`)
+
+// countable reports whether countFrom can count rows matching terms.
+func (d sqlDataset) countable(terms []querytable.WhereTerm) bool {
+	if d.countFrom == "" {
+		return false
+	}
+	for _, term := range terms {
+		for _, clause := range term.Predicates() {
+			for _, match := range sqlQualifier.FindAllStringSubmatch(d.columns[clause.Field], -1) {
+				if match[1] != d.countAlias {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+// bucketRange bounds the timestamps a day, week, or month bucket can hold,
+// with a day's margin for the local time offset.
+func bucketRange(field, value string) (from, to string, ok bool) {
+	var start, end time.Time
+	var err error
+	switch field {
+	case "day", "week":
+		start, err = time.ParseInLocation("2006-01-02", value, time.Local)
+		end = start.AddDate(0, 0, map[string]int{"day": 1, "week": 7}[field])
+	case "month":
+		start, err = time.ParseInLocation("2006-01", value, time.Local)
+		end = start.AddDate(0, 1, 0)
+	}
+	if err != nil || start.IsZero() {
+		return "", "", false
+	}
+	return formatTime(start.Add(-24 * time.Hour)), formatTime(end.Add(24 * time.Hour)), true
 }
 
 // maxSQLBuckets bounds a metric's groups; the UI shows the largest first.
@@ -178,16 +333,32 @@ func (d sqlDataset) where(terms []querytable.WhereTerm, schema querytable.Schema
 		parts = append(parts, d.base)
 	}
 	for _, term := range terms {
+		lookup := false
 		alternatives := []string{}
 		for _, clause := range term.Predicates() {
 			sqlText, clauseArgs, err := d.clause(clause, schema.Fields[clause.Field])
 			if err != nil {
 				return "", nil, err
 			}
+			if column, ok := d.buckets[clause.Field]; ok && clause.Op == "=" && !clause.Negated {
+				if from, to, ok := bucketRange(clause.Field, clause.Value); ok {
+					sqlText = "(" + sqlText + " AND " + column + ">=? AND " + column + "<?)"
+					clauseArgs = append(clauseArgs, from, to)
+				}
+			}
 			alternatives = append(alternatives, sqlText)
 			args = append(args, clauseArgs...)
+			lookup = lookup || d.lookups[clause.Field]
 		}
-		parts = append(parts, "("+strings.Join(alternatives, " OR ")+")")
+		// Without statistics SQLite takes a filter on a column it has no index
+		// for to keep few rows, and reads and sorts every match to order a page.
+		// likely() says it keeps most, so a page walks the index its order uses
+		// and stops once full. A lookup field's index finds its rows directly.
+		condition := strings.Join(alternatives, " OR ")
+		if !lookup {
+			condition = "likely(" + condition + ")"
+		}
+		parts = append(parts, "("+condition+")")
 	}
 	if len(parts) == 0 {
 		return "", args, nil
@@ -216,8 +387,18 @@ func (d sqlDataset) Rows(ctx context.Context, q queryer, query querytable.Query,
 	if err != nil {
 		return querytable.Result{}, err
 	}
+	count, countArgs := "SELECT COUNT(*) n "+d.from+where, args
+	if d.cube != nil && d.cube.filters(query.Where) {
+		cubeWhere, cubeArgs, err := d.cube.table().where(query.Where, schema)
+		if err != nil {
+			return querytable.Result{}, err
+		}
+		count, countArgs = "SELECT COALESCE(SUM("+d.cube.count+"),0) n "+d.cube.from+cubeWhere, cubeArgs
+	} else if d.countable(query.Where) {
+		count = "SELECT COUNT(*) n " + d.countFrom + where
+	}
 	var total int
-	countRows, err := queryMapsContext(ctx, q, "SELECT COUNT(*) n "+d.from+where, args...)
+	countRows, err := queryMapsContext(ctx, q, count, countArgs...)
 	if err != nil {
 		return querytable.Result{}, err
 	}
@@ -260,6 +441,9 @@ func (d sqlDataset) Rows(ctx context.Context, q queryer, query querytable.Query,
 }
 
 func (d sqlDataset) Distinct(ctx context.Context, q queryer, fieldName, search string, limit int, schema querytable.Schema) (querytable.DistinctResult, error) {
+	if _, ok := d.cube.dimensionFor(fieldName); ok {
+		return d.cube.table().Distinct(ctx, q, fieldName, search, limit, schema)
+	}
 	field, ok := schema.Fields[fieldName]
 	if !ok || !field.Filterable {
 		return querytable.DistinctResult{}, fmt.Errorf("unknown filter field %q", fieldName)
@@ -312,6 +496,14 @@ func (d sqlDataset) Aggregate(ctx context.Context, q queryer, request querytable
 	where, args, err := d.where(request.Where, schema)
 	if err != nil {
 		return querytable.AggregationResult{}, err
+	}
+	routed := d.cube != nil && d.cube.filters(request.Where)
+	var cubeWhere string
+	var cubeArgs []any
+	if routed {
+		if cubeWhere, cubeArgs, err = d.cube.table().where(request.Where, schema); err != nil {
+			return querytable.AggregationResult{}, err
+		}
 	}
 	result := querytable.AggregationResult{Metrics: []querytable.Metric{}}
 	for _, aggregation := range request.Aggregations {
@@ -377,8 +569,18 @@ func (d sqlDataset) Aggregate(ctx context.Context, q queryer, request querytable
 			}
 			groupBy = " GROUP BY " + strings.Join(positions, ",")
 		}
-		statement := fmt.Sprintf("SELECT %s%s AS value,COUNT(*) AS n %s%s%s ORDER BY value DESC LIMIT %d", selectKeys, measure, d.from, where, groupBy, maxSQLBuckets)
-		rows, err := queryMapsContext(ctx, q, statement, args...)
+		statement, statementArgs := fmt.Sprintf("SELECT %s%s AS value,COUNT(*) AS n %s%s%s ORDER BY value DESC LIMIT %d", selectKeys, measure, d.from, where, groupBy, maxSQLBuckets), args
+		if routed {
+			if cubeMeasure, ok := d.cube.measure(aggregation, schema); ok {
+				cubeKeys := ""
+				for index, field := range aggregation.GroupBy {
+					cubeKeys += fmt.Sprintf("%s AS k%d,", d.cube.dimensions[field], index)
+				}
+				statement, statementArgs = fmt.Sprintf("SELECT %s%s AS value,COALESCE(SUM(%s),0) AS n %s%s%s ORDER BY value DESC LIMIT %d",
+					cubeKeys, cubeMeasure, d.cube.count, d.cube.from, cubeWhere, groupBy, maxSQLBuckets), cubeArgs
+			}
+		}
+		rows, err := queryMapsContext(ctx, q, statement, statementArgs...)
 		if err != nil {
 			return result, err
 		}
@@ -426,6 +628,9 @@ func (d sqlDataset) FieldStats(ctx context.Context, q queryer, names []string, s
 	if err != nil {
 		return nil, err
 	}
+	if d.cube != nil {
+		return d.cube.fieldStats(ctx, q, requested, schema)
+	}
 	fields, measures := []string{}, []string{}
 	for _, name := range requested {
 		expression, ok := d.columns[name]
@@ -456,8 +661,49 @@ func (d sqlDataset) FieldStats(ctx context.Context, q queryer, names []string, s
 	}
 	for index, name := range fields {
 		row := rows[0]
-		result[name] = querytable.FieldStat{Distinct: int(integer(row[fmt.Sprintf("d%d", index)])),
+		result[name] = querytable.FieldStat{Distinct: querytable.Count(int(integer(row[fmt.Sprintf("d%d", index)]))),
 			Min: row[fmt.Sprintf("lo%d", index)], Max: row[fmt.Sprintf("hi%d", index)]}
+	}
+	return result, nil
+}
+
+// fieldStats reports what the cube keeps of each field: the distinct values
+// and range of a dimension, and the range of a measure. A measure's distinct
+// values, and fields the cube does not keep, would take a scan of every row,
+// so they are left out.
+func (cube *sqlCube) fieldStats(ctx context.Context, q queryer, names []string, schema querytable.Schema) (map[string]querytable.FieldStat, error) {
+	fields, measures := []string{}, []string{}
+	for _, name := range names {
+		kind := schema.Fields[name].Kind
+		ranged := kind == querytable.Number || kind == querytable.Datetime
+		index := len(fields)
+		if expression, ok := cube.dimensions[name]; ok {
+			measures = append(measures, fmt.Sprintf("COUNT(DISTINCT NULLIF(%s,'')) AS d%d", expression, index))
+			if ranged {
+				measures = append(measures, fmt.Sprintf("MIN(NULLIF(%s,'')) AS lo%d,MAX(NULLIF(%s,'')) AS hi%d", expression, index, expression, index))
+			}
+		} else if columns, ok := cube.measures[name]; ok && ranged {
+			measures = append(measures, fmt.Sprintf("MIN(%s) AS lo%d,MAX(%s) AS hi%d", columns.min, index, columns.max, index))
+		} else {
+			continue
+		}
+		fields = append(fields, name)
+	}
+	result := make(map[string]querytable.FieldStat, len(fields))
+	if len(fields) == 0 {
+		return result, nil
+	}
+	rows, err := queryMapsContext(ctx, q, "SELECT "+strings.Join(measures, ",")+" "+cube.from)
+	if err != nil || len(rows) != 1 {
+		return result, err
+	}
+	for index, name := range fields {
+		row, stat := rows[0], querytable.FieldStat{}
+		if distinct, ok := row[fmt.Sprintf("d%d", index)]; ok {
+			stat.Distinct = querytable.Count(int(integer(distinct)))
+		}
+		stat.Min, stat.Max = row[fmt.Sprintf("lo%d", index)], row[fmt.Sprintf("hi%d", index)]
+		result[name] = stat
 	}
 	return result, nil
 }

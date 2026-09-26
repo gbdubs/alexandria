@@ -1,6 +1,7 @@
 package archive
 
 import (
+	"context"
 	"regexp"
 	"sort"
 	"strings"
@@ -96,6 +97,13 @@ func (c *Catalog) usageRows(location *time.Location) ([]map[string]any, error) {
 	return rows, nil
 }
 
+// localUsageRows returns usageRows in local time, kept until the next commit
+// or local day, since costs at today's prices follow the date.
+func (c *Catalog) localUsageRows(ctx context.Context) ([]map[string]any, error) {
+	key := "usage:" + time.Local.String() + ":" + c.clock().Format("2006-01-02")
+	return cachedValue(ctx, c, key, func(context.Context) ([]map[string]any, error) { return c.usageRows(time.Local) })
+}
+
 // representativeLedger reads the whole ledger less linked mirrors: only each
 // mirror group's representative workspace keeps its entries.
 func (c *Catalog) representativeLedger() ([]map[string]any, error) {
@@ -168,17 +176,21 @@ func localMidnight(instant time.Time, location *time.Location) time.Time {
 
 // attachWorkspaceCosts adds each Library row's API-equivalent cost. Large
 // result sets read the whole ledger rather than an oversized IN list.
-func (c *Catalog) attachWorkspaceCosts(rows []map[string]any) error {
+func (c *Catalog) attachWorkspaceCosts(ctx context.Context, rows []map[string]any) error {
 	if len(rows) == 0 {
 		return nil
 	}
-	ids := []string{}
+	var totals map[string]*workspaceUsageTotal
+	var err error
 	if len(rows) <= 500 {
+		ids := []string{}
 		for _, row := range rows {
 			ids = append(ids, firstString(row["id"]))
 		}
+		totals, err = c.workspaceUsage(ids)
+	} else {
+		totals, err = c.allWorkspaceUsage(ctx)
 	}
-	totals, err := c.workspaceUsage(ids)
 	if err != nil {
 		return err
 	}
@@ -208,6 +220,14 @@ func (total *workspaceUsageTotal) add(other *workspaceUsageTotal) {
 		total.today = addCost(total.today, &today)
 	}
 	total.status = worsePriceStatus(total.status, other.status)
+}
+
+// allWorkspaceUsage returns workspaceUsage for every workspace, kept until the
+// next commit or local day. The totals are shared and must not be modified.
+func (c *Catalog) allWorkspaceUsage(ctx context.Context) (map[string]*workspaceUsageTotal, error) {
+	return cachedValue(ctx, c, "workspace-usage:"+c.clock().Format("2006-01-02"), func(context.Context) (map[string]*workspaceUsageTotal, error) {
+		return c.workspaceUsage(nil)
+	})
 }
 
 // workspaceUsage totals the priced ledger per workspace, for the given

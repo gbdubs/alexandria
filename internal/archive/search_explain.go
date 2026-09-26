@@ -11,11 +11,12 @@ import (
 // Library search ranks each workspace by its best text match and its concept
 // similarity. A text match is a message holding every query word (word
 // search) or every query term as a substring (substring search); among the
-// searchScan best-scoring messages, the workspace with the best message ranks
-// first. Concept similarity is the cosine between the query's and the
+// searchScan best-scoring of the recentMatches most recently indexed matching
+// messages, the workspace with the best message ranks first. Concept similarity is the cosine between the query's and the
 // workspace's concept vectors, counted above relatedThreshold.
 const (
 	searchScan       = 500
+	recentMatches    = 25000
 	relatedThreshold = .05
 	relatedWeight    = .6
 	textWeight       = .4
@@ -100,45 +101,39 @@ func (c *Catalog) searchEvidence(ctx context.Context, options SearchOptions) (ma
 		}
 		return nil
 	}
+	// FTS5 ranks the matches itself, and only the best searchScan are joined
+	// to their workspaces: joining every match first read a messages row per
+	// match, seconds for a common word. Ranking reads every match's length, so
+	// only the recentMatches most recently indexed are ranked, whose lengths
+	// are stored together: a word in more messages than that (a million hold
+	// "the") took up to seconds to rank, and says little about the work.
 	if parsed := ftsQuery(options.Query); parsed != "" {
-		if err := collect(`SELECT c.workspace_id,m.id message_id FROM messages_fts
-			JOIN messages m ON m.id=messages_fts.message_id JOIN conversations c ON c.id=m.conversation_id
-			WHERE messages_fts MATCH ? ORDER BY bm25(messages_fts) LIMIT ?`, []any{parsed, searchScan},
-			func(e *searchEvidence) *searchMatches { return &e.text }); err != nil {
+		if err := collect(`SELECT c.workspace_id,m.id message_id FROM
+			(SELECT message_id,rank FROM messages_fts WHERE messages_fts MATCH ?1 AND rowid>=COALESCE(
+				(SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?1 ORDER BY rowid DESC LIMIT 1 OFFSET ?3),0)
+			ORDER BY rank LIMIT ?2) f
+			JOIN messages m ON m.id=f.message_id JOIN conversations c ON c.id=m.conversation_id ORDER BY f.rank`,
+			[]any{parsed, searchScan, recentMatches - 1}, func(e *searchEvidence) *searchMatches { return &e.text }); err != nil {
 			return nil, err
 		}
 	}
 	if terms, _ := substringTerms(options.Query); options.Substring && len(terms) > 0 {
-		if err := collect(`SELECT c.workspace_id,m.id message_id FROM messages_trigram
-			JOIN message_fts_rows r ON r.fts_rowid=messages_trigram.rowid JOIN messages m ON m.id=r.message_id
-			JOIN conversations c ON c.id=m.conversation_id
-			WHERE messages_trigram MATCH ? ORDER BY bm25(messages_trigram) LIMIT ?`, []any{substringQuery(terms), searchScan},
-			func(e *searchEvidence) *searchMatches { return &e.substring }); err != nil {
+		if err := collect(`SELECT c.workspace_id,m.id message_id FROM
+			(SELECT rowid,rank FROM messages_trigram WHERE messages_trigram MATCH ?1 AND rowid>=COALESCE(
+				(SELECT rowid FROM messages_trigram WHERE messages_trigram MATCH ?1 ORDER BY rowid DESC LIMIT 1 OFFSET ?3),0)
+			ORDER BY rank LIMIT ?2) f
+			JOIN message_fts_rows r ON r.fts_rowid=f.rowid JOIN messages m ON m.id=r.message_id
+			JOIN conversations c ON c.id=m.conversation_id ORDER BY f.rank`,
+			[]any{substringQuery(terms), searchScan, recentMatches - 1}, func(e *searchEvidence) *searchMatches { return &e.substring }); err != nil {
 			return nil, err
 		}
 	}
-	queryVector := semanticEmbed(options.Query)
-	documents, err := queryMapsContext(ctx, c.DB, "SELECT workspace_id,vector_json FROM semantic_documents")
+	scores, err := c.semanticMatches(ctx, options.Query, relatedThreshold, searchScan)
 	if err != nil {
 		// Word and substring matches stand without concept similarity.
 		return evidence, nil
 	}
-	type scored struct {
-		id    string
-		score float64
-	}
-	scores := []scored{}
-	for _, document := range documents {
-		vector, decodeErr := decodeVector(document["vector_json"])
-		if decodeErr != nil {
-			continue
-		}
-		if score := semanticCosine(queryVector, vector); score > relatedThreshold {
-			scores = append(scores, scored{firstString(document["workspace_id"]), score})
-		}
-	}
-	sort.Slice(scores, func(i, j int) bool { return scores[i].score > scores[j].score })
-	for _, item := range scores[:min(len(scores), searchScan)] {
+	for _, item := range scores {
 		get(item.id).related = item.score
 	}
 	return evidence, nil
@@ -205,7 +200,13 @@ func (c *Catalog) explainLibraryRows(ctx context.Context, rows []map[string]any,
 		if e.related > 0 {
 			stored := documents[firstString(row["id"])]
 			explanation := explainSemantic(query, stored.document)
-			why["related"] = map[string]any{"cosine": e.related, "threshold": relatedThreshold, "weight": relatedWeight,
+			// Ranking scored the float32 copy of the vector (semantic_vectors);
+			// the explanation splits the cosine of the full one.
+			cosine := e.related
+			if len(stored.vector) > 0 {
+				cosine = semanticCosine(semanticEmbed(query), stored.vector)
+			}
+			why["related"] = map[string]any{"cosine": cosine, "threshold": relatedThreshold, "weight": relatedWeight,
 				"exact": stored.document.matches(stored.vector), "signal": explanation.Signal, "noise": explanation.Noise, "scattered": explanation.Scattered,
 				"terms": explanation.Terms, "fields": explanation.Fields}
 		}

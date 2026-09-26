@@ -183,7 +183,7 @@ func TestFieldStats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]FieldStat{"name": {Distinct: 1}, "count": {Distinct: 2, Min: 2.0, Max: 10.0}, "tags": {Distinct: 1}}
+	want := map[string]FieldStat{"name": {Distinct: Count(1)}, "count": {Distinct: Count(2), Min: 2.0, Max: 10.0}, "tags": {Distinct: Count(1)}}
 	if !reflect.DeepEqual(stats, want) {
 		t.Fatalf("stats = %#v", stats)
 	}

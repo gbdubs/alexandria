@@ -2,6 +2,8 @@
 
 The Tools tab reads a ledger derived from retained messages: one `model_requests` row per model API request and one `tool_calls` row per tool call, joined to its result. Shell calls are also split into `tool_commands`, one row per simple command. The ledger is rebuilt with a conversation when it is ingested. `alexandria build-tools` (or **Build tool ledger** in the Tools tab) fills it from stored messages for conversations indexed before it existed. That works without source files, so reclaimed TL1 work is covered too.
 
+The Tools table reads `tool_usage_daily`, one row per local day and summary dimension. The Tool calls table reads `tool_calls` for its rows, and answers counts, metrics, filter values, and column stats from `tool_call_cube`: the calls grouped by workspace, day, and every field with few values, a quarter as many rows. Both are rebuilt when the ledger changes or the date does. A rebuild reads every call, so pages keep serving the previous build meanwhile: after a sync they can lag it by up to half a minute. A filter the cube cannot apply, such as text inside a command or a duration range, is counted across every call, which takes seconds on a large library. Column stats leave out the distinct counts of per-call numbers and of long text for the same reason.
+
 ## Calls and outcomes
 
 - **Tool category** groups tools across providers: command, read, search, edit, web, agent, plan, user, mcp, meta, other. Codex code-mode `exec` scripts that call one non-shell tool (`write_stdin`, `web__run`, ...) are recorded under that tool.

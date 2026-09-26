@@ -191,18 +191,36 @@ func callMCP(catalog *Catalog, name string, args map[string]any) (any, error) {
 		}
 		return catalog.Search(options)
 	case "query_metrics":
-		clauses := "m.name=?"
-		values := []any{firstString(args["name"])}
-		if args["minimum"] != nil {
-			clauses += " AND (m.value>=? OR m.value IS NULL)"
-			values = append(values, args["minimum"])
+		// Observed values are ranked through an index on (name, value). The
+		// workspaces with no value, which sort after them, are read only when
+		// the page has room for some.
+		name := firstString(args["name"])
+		bounds := func(alias string) (string, []any) {
+			clauses, values := "", []any{}
+			if args["minimum"] != nil {
+				clauses += " AND " + alias + ".value>=?"
+				values = append(values, args["minimum"])
+			}
+			if args["maximum"] != nil {
+				clauses += " AND " + alias + ".value<=?"
+				values = append(values, args["maximum"])
+			}
+			return clauses, values
 		}
-		if args["maximum"] != nil {
-			clauses += " AND (m.value<=? OR m.value IS NULL)"
-			values = append(values, args["maximum"])
+		const columns = "w.id workspace_id,w.title,w.source_kind,m.value,m.unit,m.status,m.coverage,m.definition"
+		within, values := bounds("m")
+		rows, err := queryMaps(catalog.DB, "SELECT "+columns+" FROM metrics m JOIN workspaces w ON w.id=m.workspace_id WHERE m.name=? AND m.value IS NOT NULL"+
+			within+" ORDER BY m.value DESC LIMIT ?", append(append([]any{name}, values...), limit)...)
+		if err == nil && len(rows) < limit {
+			// A value of NULL passes the bounds; a workspace with no value inside
+			// them is listed once, without one.
+			within, values := bounds("x")
+			var unvalued []map[string]any
+			unvalued, err = queryMaps(catalog.DB, "SELECT "+columns+` FROM workspaces w LEFT JOIN metrics m ON m.workspace_id=w.id AND m.name=? AND m.value IS NULL
+				WHERE m.workspace_id IS NOT NULL OR NOT EXISTS(SELECT 1 FROM metrics x WHERE x.workspace_id=w.id AND x.name=? AND x.value IS NOT NULL`+within+`) LIMIT ?`,
+				append(append([]any{name, name}, values...), limit-len(rows))...)
+			rows = append(rows, unvalued...)
 		}
-		values = append(values, limit)
-		rows, err := queryMaps(catalog.DB, `SELECT w.id workspace_id,w.title,w.source_kind,m.value,m.unit,m.status,m.coverage,m.definition FROM workspaces w LEFT JOIN metrics m ON m.workspace_id=w.id AND `+clauses+` ORDER BY m.value IS NULL,m.value DESC LIMIT ?`, values...)
 		return map[string]any{"items": catalog.suppressMirrors(rows), "note": "Missing values are retained and sort after observed/derived values; native-alias mirrors count once."}, err
 	case "get_receipt":
 		id := firstString(args["id"])

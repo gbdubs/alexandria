@@ -306,7 +306,7 @@ func (c *Catalog) carbonHealth() (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	rows, err := c.usageRows(time.Local)
+	rows, err := c.localUsageRows(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -347,7 +347,7 @@ func (c *Catalog) carbonHealth() (map[string]any, error) {
 
 // CarbonHealth is the cached Settings section for the CO₂ calculator.
 func (c *Catalog) CarbonHealth(ctx context.Context) (map[string]any, error) {
-	return c.cachedHealthSection(ctx, "carbon", func(context.Context) (map[string]any, error) {
+	return cachedValue(ctx, c, "health:carbon", func(context.Context) (map[string]any, error) {
 		return c.carbonHealth()
 	})
 }

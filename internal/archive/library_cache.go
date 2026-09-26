@@ -33,6 +33,16 @@ type libraryCache struct {
 	day      string
 	fields   libraryFields
 	rows     []map[string]any
+	// usedAt is the last request's time, which keeps the rows warm.
+	usedAt time.Time
+}
+
+// libraryUse reports when a request last read the Library rows, and the
+// fields the rows hold, which requests have needed.
+func (c *Catalog) libraryUse() (time.Time, libraryFields) {
+	c.library.mu.Lock()
+	defer c.library.mu.Unlock()
+	return c.library.usedAt, c.library.fields
 }
 
 // clock returns the current time; tests replace now to change the date.
@@ -65,7 +75,7 @@ func (c *Catalog) cachedLibraryRows(ctx context.Context, fields libraryFields) (
 	if current {
 		fields = fields.union(cache.fields)
 	}
-	cache.rows = nil
+	cache.rows, cache.fields = nil, fields
 	rows, err := c.computeSearchRows(SearchOptions{ctx: ctx}, fields)
 	if err != nil {
 		return nil, err

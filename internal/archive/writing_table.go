@@ -51,12 +51,25 @@ func (day *writingDay) add(other *writingDay) {
 
 func newWritingDay(day string) *writingDay { return &writingDay{day: day, counts: map[string]int64{}} }
 
-// writingData returns the writing rows and, per row ID, its daily text.
+// writingTable is the writing rows and, per row ID, its daily text.
+type writingTable struct {
+	rows  []map[string]any
+	daily map[string]map[string]*writingDay
+}
+
+// writingData returns the writing rows and, per row ID, its daily text. They
+// are kept until the next commit or local day (costs at today's prices follow
+// the date), and must not be modified.
 func (c *Catalog) writingData(ctx context.Context) ([]map[string]any, map[string]map[string]*writingDay, error) {
 	c.ensureAuthorship()
+	table, err := cachedValue(ctx, c, "writing:"+c.clock().Format("2006-01-02"), c.computeWritingData)
+	return table.rows, table.daily, err
+}
+
+func (c *Catalog) computeWritingData(ctx context.Context) (writingTable, error) {
 	parents, err := c.subagentParents(ctx)
 	if err != nil {
-		return nil, nil, err
+		return writingTable{}, err
 	}
 	sums := []string{"workspace_id", "day", "COUNT(*) messages", "SUM(typed_words>0) typed_messages", "MAX(typed_words) longest_typed", "MIN(sent_at) first_sent", "MAX(sent_at) last_sent"}
 	for _, column := range authorshipColumns() {
@@ -64,7 +77,7 @@ func (c *Catalog) writingData(ctx context.Context) ([]map[string]any, map[string
 	}
 	result, err := c.DB.QueryContext(ctx, "SELECT "+strings.Join(sums, ",")+" FROM message_authorship GROUP BY workspace_id,day")
 	if err != nil {
-		return nil, nil, err
+		return writingTable{}, err
 	}
 	defer result.Close()
 	columns := authorshipColumns()
@@ -79,7 +92,7 @@ func (c *Catalog) writingData(ctx context.Context) ([]map[string]any, map[string
 			targets = append(targets, &values[index])
 		}
 		if err := result.Scan(targets...); err != nil {
-			return nil, nil, err
+			return writingTable{}, err
 		}
 		for index, column := range columns {
 			entry.counts[column] = values[index]
@@ -97,17 +110,17 @@ func (c *Catalog) writingData(ctx context.Context) ([]map[string]any, map[string
 		daily[root][entry.day].add(entry)
 	}
 	if err := result.Err(); err != nil {
-		return nil, nil, err
+		return writingTable{}, err
 	}
 	works, err := queryMapsContext(ctx, c.DB, `SELECT w.id,w.title,w.source_kind,r.display_name repository_name,
 			(SELECT GROUP_CONCAT(DISTINCT cx.provider) FROM conversations cx WHERE cx.workspace_id=w.id) providers
 		FROM workspaces w LEFT JOIN repositories r ON r.id=w.repository_id`)
 	if err != nil {
-		return nil, nil, err
+		return writingTable{}, err
 	}
-	usage, err := c.workspaceUsage(nil)
+	usage, err := c.allWorkspaceUsage(ctx)
 	if err != nil {
-		return nil, nil, err
+		return writingTable{}, err
 	}
 	// Folded sub-agent works that sent no user-role text still spent tokens.
 	for child := range parents {
@@ -135,7 +148,7 @@ func (c *Catalog) writingData(ctx context.Context) ([]map[string]any, map[string
 		rows = append(rows, writingRow(work, total, spent, len(members[id])-1))
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return firstString(rows[i]["id"]) < firstString(rows[j]["id"]) })
-	return rows, daily, nil
+	return writingTable{rows, daily}, nil
 }
 
 func writingRow(work map[string]any, total *writingDay, spent *workspaceUsageTotal, folded int) map[string]any {

@@ -1237,7 +1237,10 @@ func upsertSummary(tx *sql.Tx, workspaceID string, record WorkspaceRecord) error
 	semanticText := strings.Join(semanticParts, "\n")
 	vector := semanticEmbed(semanticText)
 	_, err = tx.Exec(`INSERT INTO semantic_documents(workspace_id,text_hash,vector_json,dimensions,model,indexed_at) VALUES(?,?,?,?,?,?) ON CONFLICT(workspace_id) DO UPDATE SET text_hash=excluded.text_hash,vector_json=excluded.vector_json,dimensions=excluded.dimensions,model=excluded.model,indexed_at=excluded.indexed_at`, workspaceID, hashBytes([]byte(semanticText)), jsonText(vector), len(vector), "local-concept-hash-v1", now())
-	return err
+	if err != nil {
+		return err
+	}
+	return workspaceVectors.store(tx, workspaceID, vector)
 }
 
 func upsertChanges(tx *sql.Tx, workspaceID string, changes []map[string]any) error {

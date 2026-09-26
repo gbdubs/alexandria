@@ -1,6 +1,7 @@
 package archive
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -35,6 +36,7 @@ func fitConversationItems(result map[string]any, budget int) {
 }
 
 func (c *Catalog) searchConversations(args map[string]any) (map[string]any, error) {
+	ctx := context.Background()
 	query := strings.TrimSpace(firstString(args["query"]))
 	limit := clamp(int(integer(valueOr(args["limit"], 8))), 1, 20)
 	offset := max(0, int(integer(args["offset"])))
@@ -42,10 +44,16 @@ func (c *Catalog) searchConversations(args map[string]any) (map[string]any, erro
 	lexical := map[string]float64{}
 	matches := map[string]map[string]any{}
 	if parsed := ftsQuery(query); parsed != "" {
-		rows, err := queryMaps(c.DB, `SELECT m.conversation_id,m.id message_id,
-			snippet(messages_fts,1,'','',' … ',18) snippet,bm25(messages_fts) rank
-			FROM messages_fts JOIN messages m ON m.id=messages_fts.message_id
-			WHERE messages_fts MATCH ? ORDER BY rank LIMIT 500`, parsed)
+		// As in the Library search (see searchEvidence), FTS5 ranks the
+		// most recent matches itself, and only the best 500 are joined to their
+		// conversations. A snippet tokenizes its whole message, so only the
+		// page's cards get one (see conversationCards).
+		rows, err := queryMaps(c.DB, `SELECT m.conversation_id,f.message_id FROM
+			(SELECT message_id,rank FROM messages_fts
+				WHERE messages_fts MATCH ?1 AND rowid>=COALESCE(
+					(SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?1 ORDER BY rowid DESC LIMIT 1 OFFSET ?2),0)
+				ORDER BY rank LIMIT 500) f
+			JOIN messages m ON m.id=f.message_id ORDER BY f.rank`, parsed, recentMatches-1)
 		if err != nil {
 			return nil, err
 		}
@@ -87,17 +95,35 @@ func (c *Catalog) searchConversations(args map[string]any) (map[string]any, erro
 		clauses = append(clauses, "COALESCE(c.started_at,w.activity_at)<=?")
 		values = append(values, timeBound(to, true))
 	}
-	rows, err := queryMaps(c.DB, `SELECT c.id conversation_id,c.workspace_id,c.provider,c.model,c.coverage,c.started_at,c.ended_at,
-		substr(w.title,1,101) title,w.activity_at,substr(r.display_name,1,101) repository,
-		d.initiation,d.initiation_message_id,d.outcome conversation_outcome,d.outcome_message_id,d.vector_json,d.indexed_at,
-		(SELECT COUNT(*) FROM messages m WHERE m.conversation_id=c.id) message_count
-		FROM conversations c JOIN workspaces w ON w.id=c.workspace_id
-		LEFT JOIN repositories r ON r.id=w.repository_id
-		LEFT JOIN conversation_documents d ON d.conversation_id=c.id WHERE `+strings.Join(clauses, " AND "), values...)
+	// Ranking reads a few columns of every conversation; the rest of a card,
+	// and its message count, are read only for the page (see conversationCards).
+	// Without filters, which is how agents usually search, the list is kept
+	// until the next commit.
+	candidates := func(context.Context) ([]map[string]any, error) {
+		return queryMaps(c.DB, `SELECT c.id conversation_id,c.started_at,w.activity_at,substr(w.title,1,101) title
+			FROM conversations c JOIN workspaces w ON w.id=c.workspace_id
+			LEFT JOIN repositories r ON r.id=w.repository_id WHERE `+strings.Join(clauses, " AND "), values...)
+	}
+	var rows []map[string]any
+	var err error
+	if len(values) == 0 {
+		rows, err = cachedValue(ctx, c, "mcp-conversations", candidates)
+	} else {
+		rows, err = candidates(ctx)
+	}
 	if err != nil {
 		return nil, err
 	}
-	queryVector := semanticEmbed(query)
+	semantic := map[string]float64{}
+	if query != "" {
+		scores, err := c.vectorScores(ctx, conversationVectors, query, .1)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range scores {
+			semantic[item.id] = item.score
+		}
+	}
 	results := []map[string]any{}
 	for _, row := range rows {
 		id := firstString(row["conversation_id"])
@@ -107,12 +133,9 @@ func (c *Catalog) searchConversations(args map[string]any) (map[string]any, erro
 			reasons = append(reasons, "message text")
 		}
 		if query != "" {
-			if vector, decodeErr := decodeVector(row["vector_json"]); decodeErr == nil {
-				semantic := semanticCosine(queryVector, vector)
-				if semantic > .1 {
-					score += semantic * .35
-					reasons = append(reasons, "conversation context")
-				}
+			if value, ok := semantic[id]; ok {
+				score += value * .35
+				reasons = append(reasons, "conversation context")
 			}
 			if strings.Contains(strings.ToLower(firstString(row["title"])), strings.ToLower(query)) {
 				score += .3
@@ -131,20 +154,12 @@ func (c *Catalog) searchConversations(args map[string]any) (map[string]any, erro
 		if len(reasons) == 0 {
 			reasons = append(reasons, "structured filters or recent activity")
 		}
-		snippet := firstString(row["initiation"])
-		messageID := firstString(row["initiation_message_id"])
+		result := map[string]any{"conversation_id": id, "started_at": row["started_at"], "activity_at": row["activity_at"],
+			"relevance_reason": strings.Join(reasons, ", "), "score": score}
 		if match := matches[id]; match != nil {
-			snippet = firstString(match["snippet"])
-			messageID = firstString(match["message_id"])
+			result["message_id"] = firstString(match["message_id"])
 		}
-		results = append(results, map[string]any{
-			"conversation_id": id, "workspace_id": row["workspace_id"], "title": clipText(firstString(row["title"]), 100),
-			"repository": row["repository"], "provider": row["provider"], "model": row["model"],
-			"started_at": row["started_at"], "ended_at": row["ended_at"], "activity_at": row["activity_at"], "message_count": row["message_count"],
-			"coverage": row["coverage"], "indexed_at": row["indexed_at"],
-			"relevance_reason": strings.Join(reasons, ", "), "snippet": clipText(snippet, 180),
-			"message_id": messageID, "score": score,
-		})
+		results = append(results, result)
 	}
 	sort.SliceStable(results, func(i, j int) bool {
 		if results[i]["score"].(float64) != results[j]["score"].(float64) {
@@ -163,6 +178,9 @@ func (c *Catalog) searchConversations(args map[string]any) (map[string]any, erro
 		offset = total
 	}
 	end := min(total, offset+limit)
+	if err := c.conversationCards(results[offset:end], ftsQuery(query)); err != nil {
+		return nil, err
+	}
 	freshness := c.Freshness()
 	result := map[string]any{"items": results[offset:end], "next_offset": nil, "total": total,
 		"freshness": map[string]any{"status": freshness["status"], "stale_sources": freshness["stale_sources"]}}
@@ -174,6 +192,54 @@ func (c *Catalog) searchConversations(args map[string]any) (map[string]any, erro
 		result["next_offset"] = offset + len(result["items"].([]map[string]any))
 	}
 	return result, nil
+}
+
+// conversationCards completes ranked conversation results with their
+// workspace, source, and message count, and the snippet of the message that
+// matched parsed. A result without a matching message cites the
+// conversation's first request.
+func (c *Catalog) conversationCards(cards []map[string]any, parsed string) error {
+	if len(cards) == 0 {
+		return nil
+	}
+	ids := make([]any, len(cards))
+	for index, card := range cards {
+		ids[index] = card["conversation_id"]
+	}
+	rows, err := queryMaps(c.DB, `SELECT c.id conversation_id,c.workspace_id,c.provider,c.model,c.coverage,c.ended_at,
+		substr(w.title,1,101) title,substr(r.display_name,1,101) repository,d.initiation,d.initiation_message_id,d.indexed_at,
+		(SELECT COUNT(*) FROM messages m WHERE m.conversation_id=c.id) message_count
+		FROM conversations c JOIN workspaces w ON w.id=c.workspace_id
+		LEFT JOIN repositories r ON r.id=w.repository_id
+		LEFT JOIN conversation_documents d ON d.conversation_id=c.id WHERE c.id IN (`+placeholders(len(ids))+`)`, ids...)
+	if err != nil {
+		return err
+	}
+	byID := map[string]map[string]any{}
+	for _, row := range rows {
+		byID[firstString(row["conversation_id"])] = row
+	}
+	for _, card := range cards {
+		row := byID[firstString(card["conversation_id"])]
+		for _, key := range []string{"workspace_id", "repository", "provider", "model", "ended_at", "message_count", "coverage", "indexed_at"} {
+			card[key] = row[key]
+		}
+		card["title"] = clipText(firstString(row["title"]), 100)
+		if _, matched := card["message_id"]; !matched {
+			card["snippet"], card["message_id"] = clipText(firstString(row["initiation"]), 180), firstString(row["initiation_message_id"])
+			continue
+		}
+		snippets, err := queryMaps(c.DB, `SELECT snippet(messages_fts,1,'','',' … ',18) snippet FROM messages_fts
+			WHERE messages_fts MATCH ? AND rowid=(SELECT fts_rowid FROM message_fts_rows WHERE message_id=?)`, parsed, card["message_id"])
+		if err != nil {
+			return err
+		}
+		card["snippet"] = ""
+		if len(snippets) > 0 {
+			card["snippet"] = clipText(firstString(snippets[0]["snippet"]), 180)
+		}
+	}
+	return nil
 }
 
 func (c *Catalog) collapseConversationMirrors(rows []map[string]any) []map[string]any {
@@ -190,7 +256,9 @@ func (c *Catalog) collapseConversationMirrors(rows []map[string]any) []map[strin
 		}
 		return parent[id]
 	}
-	links, _ := queryMaps(c.DB, "SELECT left_id,right_id FROM conversation_identity_links")
+	links, _ := cachedValue(context.Background(), c, "conversation-links", func(context.Context) ([]map[string]any, error) {
+		return queryMaps(c.DB, "SELECT left_id,right_id FROM conversation_identity_links")
+	})
 	for _, link := range links {
 		left, right := firstString(link["left_id"]), firstString(link["right_id"])
 		if parent[left] != "" && parent[right] != "" {
@@ -273,10 +341,19 @@ func (c *Catalog) conversationPassages(args map[string]any) (map[string]any, err
 		return nil, fmt.Errorf("query is required")
 	}
 	limit := clamp(int(integer(valueOr(args["limit"], 5))), 1, 10)
-	rows, err := queryMaps(c.DB, `SELECT m.id message_id,m.role,m.kind,m.source_order,
-		snippet(messages_fts,1,'','',' … ',28) snippet FROM messages_fts
-		JOIN messages m ON m.id=messages_fts.message_id
-		WHERE m.conversation_id=? AND messages_fts MATCH ? ORDER BY bm25(messages_fts) LIMIT ?`, id, ftsQuery(query), limit)
+	// A conversation's messages are indexed together, so their full-text rows
+	// share one range of rowids. Searching that range, not every match in the
+	// catalog, keeps a common word fast (it took minutes).
+	bounds, err := queryMaps(c.DB, `SELECT MIN(r.fts_rowid) low,MAX(r.fts_rowid) high FROM messages m
+		JOIN message_fts_rows r ON r.message_id=m.id WHERE m.conversation_id=?`, id)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := queryMaps(c.DB, `SELECT m.id message_id,m.role,m.kind,m.source_order,f.snippet FROM
+		(SELECT message_id,snippet(messages_fts,1,'','',' … ',28) snippet,rank FROM messages_fts
+			WHERE messages_fts MATCH ? AND rowid BETWEEN ? AND ? AND message_id IN (SELECT id FROM messages WHERE conversation_id=?)
+			ORDER BY rank LIMIT ?) f
+		JOIN messages m ON m.id=f.message_id ORDER BY f.rank`, ftsQuery(query), bounds[0]["low"], bounds[0]["high"], id, limit)
 	if err != nil {
 		return nil, err
 	}

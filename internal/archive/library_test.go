@@ -351,11 +351,7 @@ func TestLibraryRequestsReadingFewerFieldsMatchFullRows(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				ids := make([]any, len(want.Rows))
-				for index, row := range want.Rows {
-					ids[index] = row["id"]
-				}
-				if err := catalog.attachLibraryPreviews(context.Background(), want.Rows, ids); err != nil {
+				if err := catalog.attachLibraryPreviews(context.Background(), want.Rows); err != nil {
 					t.Fatal(err)
 				}
 				got := call(http.MethodPost, "/api/query/library?search="+search, body)
@@ -449,4 +445,73 @@ func decodeJSON(t *testing.T, data []byte) any {
 		t.Fatal(err)
 	}
 	return decoded
+}
+
+func TestLibraryPreviewsFollowTheirMessages(t *testing.T) {
+	catalog, _ := libraryFixture(t)
+	ctx := context.Background()
+	preview := func() (any, any) {
+		t.Helper()
+		page := []map[string]any{{"id": "c"}}
+		if err := catalog.attachLibraryPreviews(ctx, page); err != nil {
+			t.Fatal(err)
+		}
+		return page[0]["first_input"], page[0]["last_response"]
+	}
+	stored := func() int {
+		t.Helper()
+		var count int
+		if err := catalog.DB.QueryRow("SELECT COUNT(*) FROM workspace_previews WHERE workspace_id='c'").Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+	if err := catalog.refreshAllLibrary(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if first, last := preview(); first != "Please fix the parser" || last != "Fixed it" || stored() != 1 {
+		t.Fatalf("preview %q/%q, stored %d", first, last, stored())
+	}
+	// A new response marks the workspace dirty, which drops the stored
+	// preview until the refresh; meanwhile the page finds it itself.
+	if _, err := catalog.DB.Exec(`INSERT INTO messages(id,conversation_id,native_id,role,kind,text,created_at,content_hash)
+		VALUES('m9','cc','9','assistant','message','Shipped it','2026-09-23T03:00:00Z','h')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, last := preview(); last != "Shipped it" || stored() != 0 {
+		t.Fatalf("latest response %q, stored %d", last, stored())
+	}
+	// A build without previews refreshes the projection only: no stale row.
+	if _, err := catalog.DB.Exec("DELETE FROM workspace_library_dirty"); err != nil {
+		t.Fatal(err)
+	}
+	if _, last := preview(); last != "Shipped it" || stored() != 0 {
+		t.Fatalf("after an older build's refresh: %q, stored %d", last, stored())
+	}
+	// Large workspaces are filled in; small ones are quick to preview without.
+	if filled, err := catalog.refreshPreviews(ctx, 25); err != nil || filled != 0 {
+		t.Fatalf("filled %d small workspaces (%v)", filled, err)
+	}
+	if _, err := catalog.DB.Exec("UPDATE workspace_library SET turn_count=1000 WHERE workspace_id='c'"); err != nil {
+		t.Fatal(err)
+	}
+	if filled, err := catalog.refreshPreviews(ctx, 25); err != nil || filled != 1 || stored() != 1 {
+		t.Fatalf("filled %d, stored %d (%v)", filled, stored(), err)
+	}
+	if _, last := preview(); last != "Shipped it" {
+		t.Fatalf("filled preview %q", last)
+	}
+}
+
+func TestLibraryRowsReadTheWorkspaceIndex(t *testing.T) {
+	catalog, _ := libraryFixture(t)
+	stored := libraryRowSelect(func(column libraryColumn) string { return "l." + column.name }, libraryCompactFields) +
+		" JOIN workspace_library l ON l.workspace_id=w.id WHERE w.id NOT IN (SELECT workspace_id FROM workspace_library_dirty)"
+	plan, err := queryMaps(catalog.DB, "EXPLAIN QUERY PLAN "+stored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := jsonText(plan); !strings.Contains(text, "COVERING INDEX workspaces_library_idx") {
+		t.Fatalf("Library rows read the workspace table, so workspaces_library_idx lacks a field they use: %s", text)
+	}
 }

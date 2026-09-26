@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 
 	"alexandria/internal/querytable"
 )
@@ -53,14 +52,14 @@ func (s *Server) queryTableRows(ctx context.Context, dataset string, values url.
 		}
 		return runs, nil
 	case "usage":
-		return s.Catalog.usageRows(time.Local)
+		return s.Catalog.localUsageRows(ctx)
 	case "writing":
 		rows, _, err := s.Catalog.writingData(ctx)
 		return rows, err
 	case "mcp_calls":
 		return s.Catalog.mcpQueryRows(ctx)
 	case "tl1_attempts":
-		return s.Catalog.tl1AttemptRows()
+		return s.Catalog.cachedTL1AttemptRows(ctx)
 	default:
 		return nil, fmt.Errorf("unknown query-table dataset %q", dataset)
 	}
@@ -131,7 +130,7 @@ func (s *Server) getQueryTable(w http.ResponseWriter, r *http.Request, dataset, 
 		}
 	}
 	if table, ok := sqlDatasetFor(dataset); ok {
-		if err := s.Catalog.ensureToolRollup(r.Context()); err != nil {
+		if err := s.Catalog.currentToolRollup(r.Context()); err != nil {
 			writeError(w, err, http.StatusInternalServerError)
 			return
 		}
@@ -173,7 +172,7 @@ func (s *Server) getFieldStats(w http.ResponseWriter, r *http.Request, dataset s
 	}
 	var result map[string]querytable.FieldStat
 	if table, ok := sqlDatasetFor(dataset); ok {
-		if err := s.Catalog.ensureToolRollup(r.Context()); err != nil {
+		if err := s.Catalog.currentToolRollup(r.Context()); err != nil {
 			writeError(w, err, http.StatusInternalServerError)
 			return
 		}
@@ -297,7 +296,7 @@ func (s *Server) postQueryTable(w http.ResponseWriter, r *http.Request, dataset,
 // postSQLQueryTable answers row and aggregation requests for SQL-backed
 // datasets, which filter, sort, page, and group in SQLite.
 func (s *Server) postSQLQueryTable(w http.ResponseWriter, r *http.Request, dataset, operation string, table sqlDataset, schema querytable.Schema, decoder *json.Decoder) {
-	if err := s.Catalog.ensureToolRollup(r.Context()); err != nil {
+	if err := s.Catalog.currentToolRollup(r.Context()); err != nil {
 		writeError(w, err, http.StatusInternalServerError)
 		return
 	}
