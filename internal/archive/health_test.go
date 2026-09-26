@@ -13,6 +13,16 @@ func TestHealthCountsStayCachedUntilACommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var conversations, humanMessages int64
+	if err := catalog.DB.QueryRow("SELECT COUNT(*) FROM conversations").Scan(&conversations); err != nil {
+		t.Fatal(err)
+	}
+	if err := catalog.DB.QueryRow("SELECT COUNT(*) FROM messages WHERE role='user' AND kind='message'").Scan(&humanMessages); err != nil {
+		t.Fatal(err)
+	}
+	if integer(first["conversations"]) != conversations || integer(first["human_messages"]) != humanMessages {
+		t.Fatalf("health counts %v, want %d conversations and %d human messages", first, conversations, humanMessages)
+	}
 	second, _ := catalog.HealthCounts(ctx)
 	if !sameRow(first, second) {
 		t.Fatal("an unchanged catalog recounted")

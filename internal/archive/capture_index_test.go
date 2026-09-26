@@ -118,6 +118,22 @@ func TestIndexAttributesCapturesToTheCapturingHost(t *testing.T) {
 			t.Fatalf("index %s: %#v", target.label(), result)
 		}
 	}
+	hosts, err := catalog.capturedHosts(config.CaptureRoot)
+	if err != nil || len(hosts) != 2 {
+		t.Fatalf("captured hosts: %#v, %v", hosts, err)
+	}
+	for _, host := range hosts {
+		id := firstString(host["id"])
+		sources := host["sources"].([]map[string]any)
+		if len(sources) != 1 {
+			t.Fatalf("%s captured sources: %#v", id, sources)
+		}
+		source := sources[0]
+		if source["path"] != filepath.Join(root, id, "claude") || source["account"] != "local" ||
+			source["coverage"] != "complete" || firstString(source["last_attempt_at"]) == "" {
+			t.Fatalf("%s source card details: %#v", id, source)
+		}
+	}
 	for host, original := range originals {
 		var origin, writer, locator, label string
 		if err := catalog.DB.QueryRow(`SELECT c.origin,c.origin_host_id,m.evidence_locator FROM conversations c JOIN messages m ON m.conversation_id=c.id
@@ -635,6 +651,20 @@ func TestIndexAPIRunsInBackground(t *testing.T) {
 	config.CaptureRoot = filepath.Join(t.TempDir(), "captures")
 	config.Sources = []SourceConfig{{Name: "claude", Kind: "claude", Path: claude, Account: "local", Enabled: true}}
 	runCapture(t, config)
+	lastDataAt := readCaptureManifest(t, config, "claude").LastDataAt
+	// Existing libraries predate the manifest summary; the index API still
+	// derives the last data time from their captured files.
+	manifestPath := filepath.Join(config.CaptureRoot, "host-a", "claude", captureManifestName)
+	var old map[string]any
+	if data, err := os.ReadFile(manifestPath); err != nil || json.Unmarshal(data, &old) != nil {
+		t.Fatalf("read capture manifest: %v", err)
+	}
+	delete(old, "last_data_at")
+	if data, err := json.Marshal(old); err != nil {
+		t.Fatal(err)
+	} else if err := os.WriteFile(manifestPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	server := NewServer(config, catalog)
 	call := func(method, body string) (int, map[string]any) {
 		t.Helper()
@@ -666,7 +696,7 @@ func TestIndexAPIRunsInBackground(t *testing.T) {
 			host, _ := hosts[0].(map[string]any)
 			sources, _ := host["sources"].([]any)
 			source, _ := sources[0].(map[string]any)
-			if run["workspaces"] != float64(1) || run["kind"] != indexRunKind || host["id"] != "host-a" || host["current"] != true || source["needs_index"] != false {
+			if run["workspaces"] != float64(1) || run["kind"] != indexRunKind || host["id"] != "host-a" || host["current"] != true || source["needs_index"] != false || source["last_data_at"] != lastDataAt {
 				t.Fatalf("finished index: %#v", body)
 			}
 			break

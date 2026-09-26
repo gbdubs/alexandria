@@ -85,7 +85,7 @@ func (t *backgroundTasks) gitRunning() (bool, string, string) {
 // backfill runs the one-time scan instead, which does nothing once it has
 // completed.
 func (s *Server) refreshGitInBackground(backfill bool) {
-	reason := "after the last sync or index"
+	reason := "after the last index"
 	if backfill {
 		reason = "first scan of this catalog"
 	}
@@ -179,8 +179,8 @@ func (s *Server) libraryActivities() []libraryActivity {
 		if run.State != "running" {
 			continue
 		}
-		activity := libraryActivity{Kind: "sync", Label: "Syncing sources", StartedAt: run.StartedAt, Writes: true,
-			OnEject: "Stops between workspaces; the next sync resumes it."}
+		activity := libraryActivity{Kind: "sync", Label: "Indexing sources", StartedAt: run.StartedAt, Writes: true,
+			OnEject: "Stops between workspaces; the next index resumes it."}
 		// Sources are the only unit of progress a run reports; one source
 		// would sit at 0% until it is done.
 		if run.TotalSources > 1 {
@@ -236,7 +236,7 @@ func (s *Server) libraryActivities() []libraryActivity {
 	}
 	if running, since, reason := s.tasks.gitRunning(); running {
 		activities = append(activities, libraryActivity{Kind: "git", Label: "Looking up merges in Git", Detail: "Main-branch merges of indexed work, " + reason,
-			StartedAt: since, Writes: true, OnEject: "Stops; it runs again after the next sync or index."})
+			StartedAt: since, Writes: true, OnEject: "Stops; it runs again after the next index."})
 	}
 	if tools := s.Catalog.toolLedgerProgress(); tools.running {
 		activities = append(activities, libraryActivity{Kind: "maintenance", Label: "Building the Tools ledger",

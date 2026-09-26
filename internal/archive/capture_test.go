@@ -143,14 +143,19 @@ func TestCaptureCopiesWhatAdaptersReadIncrementally(t *testing.T) {
 	if err := json.Unmarshal([]byte(readText(t, filepath.Join(config.CaptureRoot, "host-a", captureHostName))), &host); err != nil || host.ID != "host-a" || host.FirstCaptureAt == "" || host.LastCaptureAt == "" {
 		t.Fatalf("host.json: %#v %v", host, err)
 	}
-	before := manifestFile(t, readCaptureManifest(t, config, "codex"), "files/archived_sessions/r2.jsonl").CapturedAt
+	firstManifest := readCaptureManifest(t, config, "codex")
+	before := manifestFile(t, firstManifest, "files/archived_sessions/r2.jsonl").CapturedAt
+	lastDataAt := firstManifest.LastDataAt
+	if lastDataAt == "" {
+		t.Fatal("first capture did not record when data arrived")
+	}
 
 	second := runCapture(t, config)
 	if codexResult := captureResult(t, second, "codex"); !second.OK || codexResult.FilesCopied != 0 || codexResult.FilesUnchanged != 3 || captureResult(t, second, "claude").FilesUnchanged != 2 {
 		t.Fatalf("no-op capture copied: %#v", second)
 	}
 	manifest := readCaptureManifest(t, config, "codex")
-	if manifestFile(t, manifest, "files/archived_sessions/r2.jsonl").CapturedAt != before || manifest.LastRun == nil || manifest.LastRun.FinishedAt == "" {
+	if manifestFile(t, manifest, "files/archived_sessions/r2.jsonl").CapturedAt != before || manifest.LastDataAt != lastDataAt || manifest.LastRun == nil || manifest.LastRun.FinishedAt == "" {
 		t.Fatalf("no-op capture changed the manifest: %#v", manifest)
 	}
 

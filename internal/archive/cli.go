@@ -96,6 +96,11 @@ func Run(arguments []string) error {
 	if command == "doctor" {
 		return runDoctor(config)
 	}
+	// dev-ui only talks to the running service, so it skips the guards below
+	// and never opens the catalog.
+	if command == "dev-ui" {
+		return runDevUICLI(config, args)
+	}
 	if err := config.checkLibrary(volumeIdentity); err != nil {
 		return err
 	}
@@ -257,7 +262,7 @@ func Run(arguments []string) error {
 }
 
 func usageError() error {
-	return fmt.Errorf("usage: alexandria [--config PATH] {init,init-library,add-this-mac,serve,capture,index,backup,ingest,repair-existing,refine-usage,build-tools,pricing,search,tl1,health,doctor,mcp,install-mcp,probe,volume-id}")
+	return fmt.Errorf("usage: alexandria [--config PATH] {init,init-library,add-this-mac,serve,capture,index,backup,ingest,repair-existing,refine-usage,build-tools,pricing,search,tl1,health,doctor,dev-ui,mcp,install-mcp,probe,volume-id}")
 }
 func urlQueryEscape(value string) string {
 	replacer := strings.NewReplacer("%", "%25", " ", "%20", "+", "%2B", "?", "%3F", "&", "%26", "=", "%3D")

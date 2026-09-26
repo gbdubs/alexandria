@@ -78,7 +78,7 @@ func (s *Server) startIndex(w http.ResponseWriter, body map[string]any) {
 		return
 	}
 	if !s.ingestMu.TryLock() {
-		writeError(w, errors.New("a source sync or index is already running"), http.StatusConflict)
+		writeError(w, errors.New("source indexing is already running"), http.StatusConflict)
 		return
 	}
 	labels := []string{}
@@ -253,18 +253,27 @@ func (c *Catalog) capturedHosts(root string) ([]map[string]any, error) {
 		sources := []map[string]any{}
 		items, _ := os.ReadDir(dir)
 		for _, item := range items {
-			// Only the manifest's header is needed; its file lists run to megabytes.
+			// New manifests summarize when data was actually copied. Older ones
+			// need their file timestamps read once to recover that time.
 			var manifest struct {
-				Version   int               `json:"version"`
-				UpdatedAt string            `json:"updated_at"`
-				Source    captureSourceInfo `json:"source"`
-				LastRun   *captureRunRecord `json:"last_run"`
+				Version    int               `json:"version"`
+				UpdatedAt  string            `json:"updated_at"`
+				LastDataAt string            `json:"last_data_at"`
+				Source     captureSourceInfo `json:"source"`
+				LastRun    *captureRunRecord `json:"last_run"`
 			}
 			data, err := os.ReadFile(filepath.Join(dir, item.Name(), captureManifestName))
 			if !item.IsDir() || !validCaptureName(item.Name()) || err != nil || json.Unmarshal(data, &manifest) != nil || manifest.Version == 0 {
 				continue
 			}
-			rows, err := queryMaps(c.DB, "SELECT coverage,last_success_at,error FROM source_states WHERE host_id=? AND source_name=?", host.ID, item.Name())
+			lastDataAt := manifest.LastDataAt
+			if lastDataAt == "" {
+				var old captureManifest
+				if json.Unmarshal(data, &old) == nil {
+					lastDataAt = old.lastCapturedDataAt()
+				}
+			}
+			rows, err := queryMaps(c.DB, "SELECT coverage,last_attempt_at,last_success_at,error FROM source_states WHERE host_id=? AND source_name=?", host.ID, item.Name())
 			if err != nil {
 				return hosts, err
 			}
@@ -275,8 +284,9 @@ func (c *Catalog) capturedHosts(root string) ([]map[string]any, error) {
 			finished := manifest.LastRun != nil && manifest.LastRun.FinishedAt != ""
 			indexed, indexedOK := parseTime(firstString(state["last_success_at"]))
 			captured, capturedOK := parseTime(manifest.UpdatedAt)
-			sources = append(sources, map[string]any{"name": item.Name(), "kind": manifest.Source.Kind, "captured_at": manifest.UpdatedAt,
-				"capture_finished": finished, "indexed_at": state["last_success_at"], "coverage": state["coverage"], "error": state["error"],
+			sources = append(sources, map[string]any{"name": item.Name(), "kind": manifest.Source.Kind, "account": manifest.Source.Account, "path": manifest.Source.Path,
+				"captured_at": manifest.UpdatedAt, "last_data_at": lastDataAt, "capture_finished": finished,
+				"indexed_at": state["last_success_at"], "last_attempt_at": state["last_attempt_at"], "coverage": defaultString(state["coverage"], "not-indexed"), "error": state["error"],
 				"needs_index": !indexedOK || firstString(state["coverage"]) != "complete" || (capturedOK && captured.After(indexed))})
 		}
 		record := map[string]any{"id": host.ID, "label": host.Label, "user": host.User, "current": host.ID == currentHost().ID, "sources": sources}

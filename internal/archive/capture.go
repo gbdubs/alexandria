@@ -67,6 +67,7 @@ type captureManifest struct {
 	Host          Host                   `json:"host"`
 	Source        captureSourceInfo      `json:"source"`
 	UpdatedAt     string                 `json:"updated_at"`
+	LastDataAt    string                 `json:"last_data_at,omitempty"`
 	Files         []*capturedFile        `json:"files"`
 	Snapshots     []*capturedSnapshot    `json:"snapshots"`
 	Installations []capturedInstallation `json:"installations,omitempty"`
@@ -545,6 +546,25 @@ func (m *captureManifest) unsafePath() string {
 	return bad
 }
 
+// lastCapturedDataAt ignores no-op captures and later indexing. Individual
+// entries retain the time their bytes were copied from the source Mac.
+func (m *captureManifest) lastCapturedDataAt() string {
+	latest := m.LastDataAt
+	latestTime, valid := parseTime(latest)
+	consider := func(value string) {
+		if at, ok := parseTime(value); ok && (!valid || at.After(latestTime)) {
+			latest, latestTime, valid = value, at, true
+		}
+	}
+	for _, file := range m.Files {
+		consider(file.CapturedAt)
+	}
+	for _, snapshot := range m.Snapshots {
+		consider(snapshot.CapturedAt)
+	}
+	return latest
+}
+
 // commit atomically replaces the manifest. Its full device flush also makes
 // every file fsynced before it durable, which is why files need only fsync.
 func (c *sourceCapture) commit(final bool) error {
@@ -555,6 +575,7 @@ func (c *sourceCapture) commit(final bool) error {
 	m.UpdatedAt = now()
 	m.Files = sortedCaptures(c.files)
 	m.Snapshots = sortedCaptures(c.snapshots)
+	m.LastDataAt = m.lastCapturedDataAt()
 	record := c.result.clone().captureRunRecord
 	if final {
 		record.FinishedAt = m.UpdatedAt

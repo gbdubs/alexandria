@@ -97,8 +97,9 @@ declare global {
     alexandriaCopyText?: (text: string) => Promise<void>;
     alexandriaMessageCard?: (message: TranscriptMessage) => HTMLElement;
     alexandriaTurnSummaries?: (conversation: Row) => TurnSummary[];
+    pharosCarbon?: { refresh: () => Promise<void> };
     alexandriaQueryTables?: {
-      refresh: (dataset: Dataset | "activity") => void;
+      refresh: (dataset: Dataset) => void;
       filterRepository: (repository: string) => void;
       filterModel: (model: string) => void;
     };
@@ -653,75 +654,9 @@ function WhyDialog({ row, onClose }: { row: Row; onClose: () => void }) {
         <li>Hash collisions: {score(related.noise)}</li>
         {related.fields.length ? <li>By field: {related.fields.map(field => `${field.label} ${score(field.value)}`).join(" · ")}</li> : null}
       </ul>
-      {related.exact ? null : <p className="muted">This work's indexed text has changed since it was scored, so the breakdown is approximate. Syncing the source again refreshes it.</p>}
+      {related.exact ? null : <p className="muted">This work's indexed text has changed since it was scored, so the breakdown is approximate. Indexing the source again updates it.</p>}
     </section> : null}
   </div></div>;
-}
-
-type SyncRun = {
-  id: string; state: string; phase: string; sources: string[]; current_source: string | null;
-  completed_sources: number; total_sources: number; workspaces: number; skipped_current?: number;
-  conversations: number; messages: number; error: string | null; started_at: string; completed_at: string | null;
-  results: Array<{ source: string; error?: string | null }>;
-};
-
-function syncTime(value: string | null) {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
-}
-
-// Source syncs this session. Refreshes on demand, and every 10s while a sync is running.
-function ActivityPage() {
-  const [runs, setRuns] = useState<SyncRun[] | null>(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const running = runs?.some(run => run.state === "running") ?? false;
-  const load = async () => {
-    setLoading(true);
-    try {
-      setRuns((await responseJSON<{ runs: SyncRun[] }>(await fetch("/api/activity"))).runs ?? []);
-      setError("");
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure));
-    } finally {
-      setLoading(false);
-    }
-  };
-  useEffect(() => {
-    void load();
-    const refresh = () => void load();
-    window.addEventListener("alexandria:activity-refresh", refresh);
-    return () => window.removeEventListener("alexandria:activity-refresh", refresh);
-  }, []);
-  useEffect(() => {
-    if (!running) return;
-    const timer = window.setInterval(() => void load(), 10_000);
-    return () => window.clearInterval(timer);
-  }, [running]);
-  const sourceLabels = optionLabels(schemas.library.fields).get("source_kind");
-  const sourceNames = (sources: string[]) => sources.map(source => sourceLabels?.get(source) ?? source).join(", ") || "No enabled sources";
-  return <div className="activity-page">
-    <div className="view-heading"><div><h1>Activity</h1><p className="muted">Source syncs this session. {running ? "Updating every 10 seconds while a sync runs." : ""}</p></div>
-      <button type="button" className="button-with-icon" onClick={() => void load()} disabled={loading}><Icon name="refresh" /> Refresh</button></div>
-    {error ? <p className="badtext">{error}</p> : null}
-    {runs && !runs.length ? <p className="muted">No source syncs have run in this session. Start one from Sources.</p> : null}
-    {runs?.length ? <table className="activity-table">
-      <thead><tr><th>Status</th><th>Sources</th><th>Progress</th><th>Started</th><th>Finished</th></tr></thead>
-      <tbody>{runs.map(run => {
-        const failures = run.results.filter(result => result.error).length;
-        const status = run.state === "running" ? "Running" : run.state === "failed" ? "Failed" : failures ? "Finished with errors" : "Complete";
-        const detail = run.error || run.results.filter(result => result.error).map(result => `${result.source}: ${result.error}`).join("\n");
-        return <tr key={run.id}>
-          <td><span className={`chip ${run.state === "failed" || failures ? "badtext" : ""}`} title={detail || undefined}>{status}</span></td>
-          <td>{run.state === "running" && run.current_source ? `Syncing ${sourceLabels?.get(run.current_source) ?? run.current_source}` : sourceNames(run.sources)}{run.state === "running" ? <div className="muted">{run.phase}</div> : null}</td>
-          <td>{run.completed_sources} of {run.total_sources} sources<div className="muted">{run.workspaces.toLocaleString()} updated · {run.conversations.toLocaleString()} conversations</div></td>
-          <td>{syncTime(run.started_at)}</td>
-          <td>{run.state === "running" ? "—" : syncTime(run.completed_at)}</td>
-        </tr>;
-      })}</tbody>
-    </table> : null}
-  </div>;
 }
 
 type ChartPeriod = "day" | "week" | "month";
@@ -1144,13 +1079,43 @@ function TokenUsage() {
     }
     tableApis.get("usage")?.setQuery(previous => ({ ...previous, aggregations: preset?.aggregations ?? [], offset: 0 }));
   }
-  return <QuerySurface dataset="usage" header={api => <>
-    <TokenChart where={toAggregationQuery(api.query, schemas.usage).where} view={chart} onChange={update} />
-    <div className="usage-preset-rows">
-      <PresetRow label="Cost" presets={costPresets} onApply={apply} />
-      <PresetRow label="Tokens" presets={usagePresets} onApply={apply} clear />
-    </div>
-  </>} />;
+  return <QuerySurface dataset="usage" header={api => {
+    const where = toAggregationQuery(api.query, schemas.usage).where;
+    return <>
+      <TokenSummary where={where} />
+      <TokenChart where={where} view={chart} onChange={update} />
+      <div className="usage-preset-rows">
+        <PresetRow label="Cost" presets={costPresets} onApply={apply} />
+        <PresetRow label="Tokens" presets={usagePresets} onApply={apply} clear />
+      </div>
+    </>;
+  }} />;
+}
+
+const tokenSummaryAggregations: AggregationClause[] = [
+  sum("total_tokens", [], "Total tokens"),
+  sum("cost_usd", [], "API cost"),
+  sum("uncached_input_tokens", [], "Uncached input"),
+  sum("cache_read_input_tokens", [], "Cache reads"),
+  sum("output_tokens", [], "Output tokens"),
+  { id: "agent_sessions", op: "count_distinct", field: "agent_session_id", label: "Agent sessions" },
+];
+
+function TokenSummary({ where }: { where: WhereTerm[] }) {
+  const result = useAggregations("usage", where, tokenSummaryAggregations);
+  const values = new Map(result.metrics.map(metric => [metric.id, Number(metric.buckets[0]?.value) || 0]));
+  const value = (field: string) => values.get(`${field}:`) ?? 0;
+  const tokens = value("total_tokens"), cost = value("cost_usd"), uncached = value("uncached_input_tokens");
+  const reads = value("cache_read_input_tokens"), output = value("output_tokens"), sessions = values.get("agent_sessions") ?? 0;
+  const cacheHit = uncached + reads > 0 ? `${Math.round(reads / (uncached + reads) * 100)}%` : "—";
+  const card = (label: string, amount: string, detail: string) => <div className="mcp-metric"><span>{label}</span><strong>{amount}</strong><small>{detail}</small></div>;
+  return <div className="mcp-metrics usage-cards token-summary" aria-label="Machine token summary" aria-busy={result.loading}>
+    {card("Total tokens", result.loading ? "Loading…" : result.error ? "Unavailable" : compactNumber(tokens), "all reported input and output")}
+    {card("API price equivalent", result.loading ? "Loading…" : result.error ? "Unavailable" : formatUSD(cost), "list-price estimate at the day’s rates")}
+    {card("Cache hit rate", result.loading ? "Loading…" : result.error ? "Unavailable" : cacheHit, `${compactNumber(reads)} cached input tokens read`)}
+    {card("Output tokens", result.loading ? "Loading…" : result.error ? "Unavailable" : compactNumber(output), "including reported reasoning output")}
+    {card("Agent sessions", result.loading ? "Loading…" : result.error ? "Unavailable" : sessions.toLocaleString(), "distinct sessions in the current filters")}
+  </div>;
 }
 
 // Writing categories as the page reports them. Each group lists the
@@ -1280,15 +1245,29 @@ function WritingUsage({ onStatus }: { onStatus: (status: AuthorshipStatus | null
   </>} />;
 }
 
-type UsageView = "tokens" | "writing";
+type UsageView = "tokens" | "writing" | "carbon";
 const usageViewKey = "pharos-usage-view";
 
-// ?usage= picks the view (links from Settings use it); otherwise the last
-// choice is kept.
+// ?usage= picks the view; otherwise the last choice is kept.
 function initialUsageView(): UsageView {
   const requested = new URLSearchParams(location.search).get("usage");
-  if (requested === "tokens" || requested === "writing") { store(usageViewKey, requested); return requested; }
-  try { return localStorage.getItem(usageViewKey) === "writing" ? "writing" : "tokens"; } catch { return "tokens"; }
+  if (requested === "tokens" || requested === "writing" || requested === "carbon") { store(usageViewKey, requested); return requested; }
+  try {
+    const saved = localStorage.getItem(usageViewKey);
+    return saved === "writing" || saved === "carbon" ? saved : "tokens";
+  } catch { return "tokens"; }
+}
+
+function CarbonImpact() {
+  useEffect(() => {
+    const refresh = () => { void window.pharosCarbon?.refresh(); };
+    refresh();
+    window.addEventListener("alexandria:usage-refresh", refresh);
+    return () => window.removeEventListener("alexandria:usage-refresh", refresh);
+  }, []);
+  return <section aria-label="Carbon Impact" data-feedback-label="Carbon Impact">
+    <div id="carbonCard" className="carbon-card" aria-busy="true" />
+  </section>;
 }
 
 function UsagePage() {
@@ -1305,16 +1284,19 @@ function UsagePage() {
     <div className="view-heading library-heading usage-heading">
       <div><h1>Usage</h1><p className="muted">{view === "tokens"
         ? "Reconciled tokens per agent session, day, and model. Input includes cached input; filter to any provider, model, or repository and the chart follows. Cost is the API list-price equivalent on the day of use, at standard rates. It ignores long-context premiums and subscriptions, so treat it as a lower bound. ≈ marks costs priced by assumption."
-        : <>Text you typed or dictated into agent chats, per conversation. Harness instructions, one-click prompts, attachments, pastes, and copied agent output are counted separately; filter the table and the chart and breakdown follow. {statusText ? <span className="meta">{statusText}</span> : null}</>}</p></div>
+        : view === "writing"
+          ? <>Text you typed or dictated into agent chats, per conversation. Harness instructions, one-click prompts, attachments, pastes, and copied agent output are counted separately; filter the table and the chart and breakdown follow. {statusText ? <span className="meta">{statusText}</span> : null}</>
+          : "Estimated inference electricity and CO₂e for the tokens in this library, using published research and explicit assumptions."}</p></div>
       <div className="usage-heading-actions">
         <div className="library-view-toggle" role="group" aria-label="Usage view">
           <button type="button" className={view === "writing" ? "active" : ""} aria-pressed={view === "writing"} onClick={() => choose("writing")}>Human Words</button>
           <button type="button" className={view === "tokens" ? "active" : ""} aria-pressed={view === "tokens"} onClick={() => choose("tokens")}>Machine Tokens</button>
+          <button type="button" className={view === "carbon" ? "active" : ""} aria-pressed={view === "carbon"} onClick={() => choose("carbon")}>Carbon Impact</button>
         </div>
         {view === "tokens" ? <RefreshPricesButton /> : null}
       </div>
     </div>
-    {view === "tokens" ? <TokenUsage /> : <WritingUsage onStatus={setStatus} />}
+    {view === "tokens" ? <TokenUsage /> : view === "writing" ? <WritingUsage onStatus={setStatus} /> : <CarbonImpact />}
   </div>;
 }
 
@@ -1619,7 +1601,6 @@ function ToolsPage() {
 
 const mounts: Array<[string, React.ReactNode]> = [
   ["queryTableLibrary", <LibraryPage />],
-  ["queryTableActivity", <ActivityPage />],
   ["queryTableUsage", <UsagePage />],
   ["toolsPage", <ToolsPage />],
   ["mcpPage", <MCPPage />],
@@ -1631,8 +1612,7 @@ for (const [id, component] of mounts) {
 }
 window.alexandriaQueryTables = {
   refresh(dataset) {
-    if (dataset === "activity") window.dispatchEvent(new Event("alexandria:activity-refresh"));
-    else tableApis.get(dataset)?.refresh();
+    tableApis.get(dataset)?.refresh();
     if (dataset === "usage") {
       tableApis.get("writing")?.refresh();
       window.dispatchEvent(new Event("alexandria:usage-refresh"));

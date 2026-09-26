@@ -21,7 +21,12 @@ func schemaSQL() string {
 
 func appHTML() string {
 	value, _ := assets.ReadFile("assets/ui.py")
-	text := string(value)
+	return uiHTML(value)
+}
+
+// uiHTML extracts the page from ui.py, which wraps it in a Python string.
+func uiHTML(source []byte) string {
+	text := string(source)
 	text = strings.TrimPrefix(text, "APP_HTML = r'''")
 	text = strings.TrimSuffix(text, "'''\n")
 	return text

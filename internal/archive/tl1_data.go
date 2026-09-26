@@ -162,7 +162,7 @@ func (c *Catalog) selectTL1(selection tl1Selection) ([]map[string]any, error) {
 		return nil, err
 	}
 	if len(installations) == 0 {
-		return nil, fmt.Errorf("no TL1 installations are indexed; enable and sync a tl1 source")
+		return nil, fmt.Errorf("no TL1 installations are indexed; enable and index a tl1 source")
 	}
 	if selection.Installation != "" {
 		for _, installation := range installations {

@@ -90,12 +90,17 @@
   "default_grid": "us_average",
   "equivalents": [
     {"key": "car_miles", "label": "miles in an average gasoline car", "g_co2e_per_unit": 393, "sources": ["epa-equivalencies"]},
-    {"key": "phone_charges", "label": "smartphone charges", "g_co2e_per_unit": 12.4, "sources": ["epa-equivalencies"]}
+    {"key": "car_hybrid", "label": "miles in a 40 mpg hybrid", "g_co2e_per_unit": 224, "sources": ["epa-equivalencies"]},
+    {"key": "car_electric", "label": "miles in an average electric car", "g_co2e_per_unit": 137, "sources": ["epa-ev-comparison", "egrid-2023"]},
+    {"key": "car_pickup", "label": "miles in a 20 mpg pickup", "g_co2e_per_unit": 448, "sources": ["epa-equivalencies"]},
+    {"key": "phone_charges", "label": "smartphone charges", "g_co2e_per_unit": 12.4, "sources": ["epa-equivalencies"]},
+    {"key": "flight_short", "label": "short-haul flight passenger-mile", "g_co2e_per_unit": 209, "sources": ["epa-flight-factors"]},
+    {"key": "flight_medium", "label": "medium-haul flight passenger-mile", "g_co2e_per_unit": 130, "sources": ["epa-flight-factors"]},
+    {"key": "flight_long", "label": "long-haul flight passenger-mile", "g_co2e_per_unit": 164, "sources": ["epa-flight-factors"]}
   ],
   "caveats": [
     "Anthropic has not published per-token or per-query energy, and OpenAI has published only a single per-query average. Every model tier is an estimate from comparable measured systems.",
     "Agentic coding sessions are mostly cache reads (96% of tokens in Hausfather's eight weeks), so the cache-read ratio moves the total more than any other factor. The low–high range reflects this.",
-    "Excluded: model training, embodied emissions of the hardware (Google puts them at about 30% of its market-based per-prompt emissions), water, networking, and your own computer.",
     "Hardware improves quickly: Blackwell GPUs used a median 35% less energy per response than H100 on ML.ENERGY's benchmark, and Google reported a 33× drop in energy per prompt over one year. Past usage on older hardware may be underestimated.",
     "Sanity check: these central factors put Hausfather's 3.2B-token, eight-week Claude Code workload at about 100 kWh, against his estimate of 170 kWh (70–330)."
   ],
@@ -118,6 +123,9 @@
     {"id": "microsoft-pue", "title": "Microsoft datacenter efficiency", "url": "https://datacenters.microsoft.com/sustainability/efficiency/", "published": "2025", "finding": "Global design PUE 1.17 in FY25 (1.16 in FY24)."},
     {"id": "egrid-2023", "title": "EPA eGRID2023 summary data (revision 2)", "url": "https://www.epa.gov/egrid/summary-data", "published": "2025-06-12", "finding": "US average 770.9 lb CO₂e/MWh; subregions SRVC 596.3, RFCW 916.1."},
     {"id": "ember-2026", "title": "Global Electricity Review 2026 (Ember)", "url": "https://ember-energy.org/latest-insights/global-electricity-review-2026/electricity-demand-and-supply-trends/", "published": "2026", "finding": "Global power-sector emissions intensity 458 g CO₂e/kWh in 2025."},
-    {"id": "epa-equivalencies", "title": "Greenhouse Gas Equivalencies Calculator: calculations and references (EPA)", "url": "https://www.epa.gov/energy/greenhouse-gases-equivalencies-calculator-calculations-and-references", "published": "2026-08-04", "finding": "3.93 × 10⁻⁴ t CO₂e per mile in an average gasoline passenger vehicle; 1.24 × 10⁻⁵ t CO₂ per smartphone charge."}
+    {"id": "epa-equivalencies", "title": "Greenhouse Gas Equivalencies Calculator: calculations and references (EPA)", "url": "https://www.epa.gov/energy/greenhouse-gases-equivalencies-calculator-calculations-and-references", "published": "2026-08-04", "finding": "3.93 × 10⁻⁴ t CO₂e per mile in an average gasoline passenger vehicle; 1.24 × 10⁻⁵ t CO₂ per smartphone charge. Hybrid and pickup examples use EPA's 8.89 kg CO₂/gallon and 0.994 CO₂-to-CO₂e ratio with stated 40 and 20 mpg assumptions."},
+    {"id": "epa-ev-comparison", "title": "Comparison: Your Car vs. an Electric Vehicle (EPA)", "url": "https://www.epa.gov/greenvehicles/comparison-your-car-vs-electric-vehicle", "published": "2026", "finding": "A typical model-year 2025 electric car uses 39 kWh per 100 miles. At the 350 g CO₂e/kWh US-average grid factor used here, this is about 137 g CO₂e per mile, excluding vehicle manufacture."},
+    {"id": "epa-flight-factors", "title": "2025 GHG Emission Factors Hub, Table 10 (EPA)", "url": "https://www.epa.gov/system/files/documents/2025-01/ghg-emission-factors-hub-2025.pdf", "published": "2025-01-15", "finding": "Combustion CO₂, CH₄ and N₂O per passenger-mile for short (<300 mi), medium (300–2299 mi), and long (≥2300 mi) flights; converted with EPA's 100-year GWP values and rounded to 209, 130 and 164 g CO₂e/passenger-mile."},
+    {"id": "faa-airports", "title": "Airport Data and Information Portal (FAA)", "url": "https://adip.faa.gov/agis/public/", "published": "2026", "finding": "Airport reference locations for LAX, SFO, DEN, JFK, DCA and BOS. Flight comparison uses approximate great-circle distance between airports."}
   ]
 }
