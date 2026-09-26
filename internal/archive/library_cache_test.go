@@ -166,3 +166,45 @@ func TestLibraryCacheServesConcurrentRequestsWithoutSharingPages(t *testing.T) {
 		}
 	}
 }
+
+func TestWarmCachesRebuildsWhatPagesUse(t *testing.T) {
+	catalog, _ := libraryFixture(t)
+	other := otherProcess(t, catalog)
+	ctx := context.Background()
+	if _, err := catalog.searchRows(SearchOptions{}, libraryCompactFields); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := catalog.localUsageRows(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := other.DB.Exec(`UPDATE workspaces SET title='Renamed' WHERE id='c'`); err != nil {
+		t.Fatal(err)
+	}
+	version, err := catalog.catalogVersion(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The first cycle only notes the change; the next, still quiet, warms.
+	catalog.warmCaches(ctx)
+	catalog.warmCaches(ctx)
+	catalog.library.mu.Lock()
+	rows := catalog.library.rows
+	catalog.library.mu.Unlock()
+	renamed := false
+	for _, row := range rows {
+		renamed = renamed || row["title"] == "Renamed"
+	}
+	if !renamed {
+		t.Fatal("the Library rows were not rebuilt after the commit")
+	}
+	catalog.derived.mu.Lock()
+	defer catalog.derived.mu.Unlock()
+	for key, entry := range catalog.derived.entries {
+		if strings.HasPrefix(key, "usage:") && entry.version != version {
+			t.Fatalf("usage rows were not rewarmed: version %d, want %d", entry.version, version)
+		}
+		if strings.HasPrefix(key, "writing:") {
+			t.Fatal("warmed a value no page asked for")
+		}
+	}
+}

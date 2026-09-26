@@ -98,7 +98,7 @@ func TestSemanticSearchReadsVectorsAnOlderBuildRewrote(t *testing.T) {
 		}
 	}
 	found()
-	if err := catalog.backfillSemanticVectors(); err != nil {
+	if err := catalog.backfillVectors(workspaceVectors); err != nil {
 		t.Fatal(err)
 	}
 	if !near(stored(first), semanticEmbed(query)) {

@@ -160,5 +160,8 @@ func (c *Catalog) closeQuery() error {
 	c.library.mu.Lock()
 	c.library.close()
 	c.library.mu.Unlock()
+	c.derived.mu.Lock()
+	c.derived.close()
+	c.derived.mu.Unlock()
 	return c.DB.Close()
 }

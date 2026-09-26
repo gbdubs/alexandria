@@ -1,6 +1,7 @@
 package archive
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -399,7 +400,7 @@ func (c *Catalog) pricingHealth() map[string]any {
 		_ = c.DB.QueryRow("SELECT COUNT(*) FROM cost_changes WHERE status=?", status).Scan(&changes)
 		health[status+"_changes"] = changes
 	}
-	rows, err := c.usageRows(time.Local)
+	rows, err := c.localUsageRows(context.Background())
 	if err != nil {
 		health["error"] = err.Error()
 		return health

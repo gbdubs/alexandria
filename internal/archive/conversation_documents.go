@@ -62,7 +62,10 @@ func upsertConversationDocument(tx *sql.Tx, conversationID string) error {
 		vector_json=excluded.vector_json,model=excluded.model,indexed_at=excluded.indexed_at`,
 		conversationID, nilIfEmpty(initiation), nilIfEmpty(initiationID), nilIfEmpty(outcome), nilIfEmpty(outcomeID),
 		jsonText(vector), "local-concept-hash-v1", now())
-	return err
+	if err != nil {
+		return err
+	}
+	return conversationVectors.store(tx, conversationID, vector)
 }
 
 func (c *Catalog) backfillConversationDocuments() error {

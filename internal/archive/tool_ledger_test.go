@@ -240,7 +240,7 @@ func TestToolTablesQueryInSQL(t *testing.T) {
 		t.Fatalf("distinct: %#v %v", distinct, err)
 	}
 	stats, err := toolCallDataset.FieldStats(ctx, catalog.DB, []string{"program", "duration_ms", "tool_cost_usd", "program"}, calls)
-	if err != nil || stats["program"].Distinct != 2 || stats["program"].Min != nil || stats["duration_ms"].Min == nil {
+	if err != nil || stats["program"].Distinct == nil || *stats["program"].Distinct != 2 || stats["program"].Min != nil || stats["duration_ms"].Min == nil {
 		t.Fatalf("field stats: %#v %v", stats, err)
 	}
 	if _, priced := stats["tool_cost_usd"]; priced {

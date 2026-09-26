@@ -229,6 +229,41 @@ func (c *Catalog) RefreshLibrary(ctx context.Context, batch int) (int, error) {
 	if _, err := tx.ExecContext(ctx, statement, args...); err != nil {
 		return 0, err
 	}
+	previews := "INSERT OR REPLACE INTO workspace_previews " + libraryPreviewSelect("w.id IN ("+placeholders(len(args))+")")
+	if _, err := tx.ExecContext(ctx, previews, args...); err != nil {
+		return 0, err
+	}
+	return len(rows), tx.Commit()
+}
+
+// refreshPreviews stores the preview IDs of up to batch large workspaces
+// without them, largest first, and reports how many it stored. After an
+// upgrade that is every workspace, and a small one is quick to preview
+// without, so only large ones are filled in. The IDs are found before the
+// write lock is taken, since a large workspace takes seconds to read, and
+// stored only for workspaces nothing has changed since: a change marks the
+// workspace dirty, and RefreshLibrary stores its previews.
+func (c *Catalog) refreshPreviews(ctx context.Context, batch int) (int, error) {
+	rows, err := queryMapsContext(ctx, c.DB, libraryPreviewSelect(`w.id IN (SELECT l.workspace_id FROM workspace_library l
+		WHERE l.turn_count+l.tool_use_count>200 AND l.workspace_id NOT IN (SELECT workspace_id FROM workspace_previews)
+			AND l.workspace_id NOT IN (SELECT workspace_id FROM workspace_library_dirty)
+		ORDER BY l.turn_count+l.tool_use_count DESC LIMIT ?)`), batch)
+	if err != nil || len(rows) == 0 {
+		return 0, err
+	}
+	tx, err := c.beginWrite(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	for _, row := range rows {
+		id := row["workspace_id"]
+		if _, err := tx.ExecContext(ctx, `INSERT INTO workspace_previews(workspace_id,first_input_id,last_response_id) SELECT ?,?,?
+			WHERE ? IN (SELECT id FROM workspaces) AND ? NOT IN (SELECT workspace_id FROM workspace_library_dirty)
+			ON CONFLICT(workspace_id) DO NOTHING`, id, row["first_input_id"], row["last_response_id"], id, id); err != nil {
+			return 0, err
+		}
+	}
 	return len(rows), tx.Commit()
 }
 
@@ -256,7 +291,14 @@ func (c *Catalog) maintainLibrary(ctx context.Context) {
 			fmt.Fprintf(os.Stderr, "Library refresh: %v\n", err)
 			wait = 5 * time.Second
 		} else if count == 0 {
-			wait = 2 * time.Second
+			// Idle: fill in previews, then keep the page caches warm.
+			if filled, err := c.refreshPreviews(ctx, 25); err != nil || filled == 0 {
+				if err != nil && ctx.Err() == nil {
+					fmt.Fprintf(os.Stderr, "Library previews: %v\n", err)
+				}
+				wait = 2 * time.Second
+				c.warmCaches(ctx)
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -277,6 +319,7 @@ type libraryFields map[string]bool
 
 var (
 	// libraryWorkspaceFields are Library fields read straight from workspaces.
+	// workspaces_library_idx holds them all (see Initialize); keep it so.
 	libraryWorkspaceFields = []string{"id", "title", "source_kind", "activity_at", "branch", "owner", "flavor",
 		"version", "lifecycle", "preservation_completeness", "main_merge_title", "location"}
 	// libraryGoFields are added in Go after the read: relevance, mirror
@@ -444,7 +487,7 @@ func (c *Catalog) libraryPage(ctx context.Context, rows []map[string]any) ([]map
 	if err != nil {
 		return nil, err
 	}
-	if err := c.attachWorkspaceCosts(full); err != nil {
+	if err := c.attachWorkspaceCosts(ctx, full); err != nil {
 		return nil, err
 	}
 	byID := make(map[string]map[string]any, len(full))
@@ -457,35 +500,66 @@ func (c *Catalog) libraryPage(ctx context.Context, rows []map[string]any) ([]map
 		// Relevance and mirror fields come from the search, not the read.
 		maps.Copy(page[index], byID[firstString(row["id"])])
 	}
-	return page, c.attachLibraryPreviews(ctx, page, args)
+	return page, c.attachLibraryPreviews(ctx, page)
 }
 
-// libraryPreviewSelect reads the first request and latest response of each
-// workspace filter selects. The unary + on role keeps SQLite from walking
-// messages_prose_idx, which orders every prose message in the catalog by
-// time, until it happens on one of this workspace's.
+// Library pages preview each workspace's first request and latest
+// response. Finding them reads every message of the workspace, seconds for a
+// page of large ones, so workspace_previews keeps their message IDs:
+// RefreshLibrary stores them with the projection and refreshPreviews fills in
+// large workspaces. Marking a workspace dirty drops its row (see schema.sql),
+// so a page reads the IDs of a workspace without one from its messages.
+
+// libraryPreviewSelect finds the preview message IDs of each workspace filter
+// selects. The unary + on role keeps SQLite from walking messages_prose_idx,
+// which orders every prose message in the catalog by time, until it happens
+// on one of this workspace's.
 func libraryPreviewSelect(filter string) string {
-	return `SELECT w.id,
-		(SELECT fm.text FROM conversations fc JOIN messages fm ON fm.conversation_id=fc.id WHERE fc.workspace_id=w.id AND +fm.role='user' AND fm.kind='message' ORDER BY fm.created_at,fm.id LIMIT 1) first_input,
-		(SELECT lm.text FROM conversations lc JOIN messages lm ON lm.conversation_id=lc.id WHERE lc.workspace_id=w.id AND +lm.role='assistant' AND lm.kind='message' ORDER BY lm.created_at DESC,lm.id DESC LIMIT 1) last_response
+	return `SELECT w.id workspace_id,
+		(SELECT fm.id FROM conversations fc JOIN messages fm ON fm.conversation_id=fc.id WHERE fc.workspace_id=w.id AND +fm.role='user' AND fm.kind='message' ORDER BY fm.created_at,fm.id LIMIT 1) first_input_id,
+		(SELECT lm.id FROM conversations lc JOIN messages lm ON lm.conversation_id=lc.id WHERE lc.workspace_id=w.id AND +lm.role='assistant' AND lm.kind='message' ORDER BY lm.created_at DESC,lm.id DESC LIMIT 1) last_response_id
 		FROM workspaces w WHERE ` + filter
 }
 
 // attachLibraryPreviews adds the first request and latest response text to
-// page rows, whose workspace IDs are ids. They are large, so only displayed
-// rows carry them.
-func (c *Catalog) attachLibraryPreviews(ctx context.Context, page []map[string]any, ids []any) error {
-	previews, err := queryMapsContext(ctx, c.DB, libraryPreviewSelect("w.id IN ("+placeholders(len(ids))+")"), ids...)
+// page rows. The text is large, so only displayed rows carry it.
+func (c *Catalog) attachLibraryPreviews(ctx context.Context, page []map[string]any) error {
+	if len(page) == 0 {
+		return nil
+	}
+	ids := make([]any, len(page))
+	for index, row := range page {
+		ids[index] = firstString(row["id"])
+	}
+	listed := placeholders(len(ids))
+	previews, err := queryMapsContext(ctx, c.DB, `SELECT workspace_id,first_input_id,last_response_id FROM workspace_previews
+		WHERE workspace_id IN (`+listed+`) UNION ALL `+libraryPreviewSelect(`w.id IN (`+listed+`)
+		AND w.id NOT IN (SELECT workspace_id FROM workspace_previews)`), append(ids, ids...)...)
 	if err != nil {
 		return err
 	}
-	byID := make(map[string]map[string]any, len(previews))
+	messageIDs, byWorkspace := []any{}, map[string]map[string]any{}
 	for _, preview := range previews {
-		byID[firstString(preview["id"])] = preview
+		byWorkspace[firstString(preview["workspace_id"])] = preview
+		for _, field := range []string{"first_input_id", "last_response_id"} {
+			if id := firstString(preview[field]); id != "" {
+				messageIDs = append(messageIDs, id)
+			}
+		}
+	}
+	texts := map[string]any{}
+	if len(messageIDs) > 0 {
+		messages, err := queryMapsContext(ctx, c.DB, "SELECT id,text FROM messages WHERE id IN ("+placeholders(len(messageIDs))+")", messageIDs...)
+		if err != nil {
+			return err
+		}
+		for _, message := range messages {
+			texts[firstString(message["id"])] = message["text"]
+		}
 	}
 	for _, row := range page {
-		preview := byID[firstString(row["id"])]
-		row["first_input"], row["last_response"] = preview["first_input"], preview["last_response"]
+		preview := byWorkspace[firstString(row["id"])]
+		row["first_input"], row["last_response"] = texts[firstString(preview["first_input_id"])], texts[firstString(preview["last_response_id"])]
 	}
 	return nil
 }

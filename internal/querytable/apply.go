@@ -476,12 +476,16 @@ func Distinct(rows []map[string]any, fieldName, search string, limit int, schema
 const MaxFieldStats = 100
 
 // FieldStat is one field's dataset-wide statistics for the column picker.
-// Min and Max are reported for number and datetime fields.
+// Min and Max are reported for number and datetime fields. Distinct is nil
+// when a backend cannot count it cheaply.
 type FieldStat struct {
-	Distinct int `json:"distinct"`
-	Min      any `json:"min,omitempty"`
-	Max      any `json:"max,omitempty"`
+	Distinct *int `json:"distinct,omitempty"`
+	Min      any  `json:"min,omitempty"`
+	Max      any  `json:"max,omitempty"`
 }
+
+// Count returns a Distinct value.
+func Count(n int) *int { return &n }
 
 // StatFields validates a field-stats request and returns the backend fields
 // to compute. Unknown fields are rejected; known fields without a server
@@ -539,7 +543,7 @@ func FieldStats(rows []map[string]any, names []string, schema Schema) (map[strin
 				high = value
 			}
 		}
-		result[name] = FieldStat{Distinct: len(seen), Min: low, Max: high}
+		result[name] = FieldStat{Distinct: Count(len(seen)), Min: low, Max: high}
 	}
 	return result, nil
 }

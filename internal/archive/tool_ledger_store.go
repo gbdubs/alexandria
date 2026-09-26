@@ -4,13 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
 )
 
-// toolRollupVersion names the tool_usage_daily layout and derivation.
-const toolRollupVersion = "rollup-v1"
+// toolRollupVersion names the tool_usage_daily and tool_call_cube layouts
+// and their derivation.
+const toolRollupVersion = "rollup-v2"
 
 // toolLedgerState tracks the in-process ledger backfill and rollup rebuilds.
 type toolLedgerState struct {
@@ -21,6 +23,8 @@ type toolLedgerState struct {
 	lastError   string
 	rollup      sync.Mutex
 	rolledAt    time.Time
+	// refreshing is set while currentToolRollup rebuilds in the background.
+	refreshing bool
 }
 
 type execer interface {
@@ -266,30 +270,69 @@ func (c *Catalog) metaValue(ctx context.Context, key string) (string, error) {
 	return value, err
 }
 
-// ensureToolRollup rebuilds tool_usage_daily when the ledger or identity
-// links changed since the last build. While a backfill is writing, rebuilds
-// are spaced out so each query does not redo the whole rollup.
+// toolRollupStale reports the ledger generation and local day a rollup
+// should be built for, the generation the current one was built for, and
+// whether it needs a rebuild.
+func (c *Catalog) toolRollupStale(ctx context.Context) (generation, built, day string, stale bool, err error) {
+	if generation, err = c.metaValue(ctx, "tool_ledger_generation"); err != nil {
+		return
+	}
+	// A new rollup layout rebuilds even when the ledger is unchanged.
+	generation += "/" + toolRollupVersion
+	if built, err = c.metaValue(ctx, "tool_rollup_generation"); err != nil {
+		return
+	}
+	day = c.clock().Format("2006-01-02")
+	builtDay, err := c.metaValue(ctx, "tool_rollup_day")
+	return generation, built, day, generation != built || day != builtDay, err
+}
+
+// currentToolRollup is ensureToolRollup for a page. A rebuild reads every
+// tool call, half a minute on a large catalog, so once this build's layout
+// exists, a page reads it while the rebuild runs in the background: it lags
+// only the last sync or a change of date.
+func (c *Catalog) currentToolRollup(ctx context.Context) error {
+	_, built, _, stale, err := c.toolRollupStale(ctx)
+	if err != nil || !stale {
+		return err
+	}
+	if !strings.HasSuffix(built, "/"+toolRollupVersion) {
+		return c.ensureToolRollup(ctx)
+	}
+	state := &c.tools
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.refreshing {
+		return nil
+	}
+	refresh := func(ctx context.Context) {
+		if err := c.ensureToolRollup(ctx); err != nil && ctx.Err() == nil {
+			fmt.Fprintf(os.Stderr, "Tool rollup: %v\n", err)
+		}
+		state.mu.Lock()
+		state.refreshing = false
+		state.mu.Unlock()
+	}
+	state.refreshing = true
+	if c.background == nil {
+		go refresh(context.Background())
+	} else if !c.background(refresh) {
+		state.refreshing = false // the service is stopping
+	}
+	return nil
+}
+
+// ensureToolRollup rebuilds tool_usage_daily and tool_call_cube when the
+// ledger or identity links changed since the last build. While a backfill is
+// writing, rebuilds are spaced out so each query does not redo the whole
+// rollup.
 func (c *Catalog) ensureToolRollup(ctx context.Context) error {
 	state := &c.tools
 	state.rollup.Lock()
 	defer state.rollup.Unlock()
-	generation, err := c.metaValue(ctx, "tool_ledger_generation")
-	if err != nil {
+	generation, built, day, stale, err := c.toolRollupStale(ctx)
+	if err != nil || !stale {
 		return err
-	}
-	// A new rollup layout rebuilds even when the ledger is unchanged.
-	generation += "/" + toolRollupVersion
-	built, err := c.metaValue(ctx, "tool_rollup_generation")
-	if err != nil {
-		return err
-	}
-	day := c.clock().Format("2006-01-02")
-	builtDay, err := c.metaValue(ctx, "tool_rollup_day")
-	if err != nil {
-		return err
-	}
-	if generation == built && day == builtDay {
-		return nil
 	}
 	state.mu.Lock()
 	running := state.running
@@ -304,8 +347,9 @@ func (c *Catalog) ensureToolRollup(ctx context.Context) error {
 	return nil
 }
 
-// rebuildToolRollup groups tool calls by local day and every summary
-// dimension. Mirrors of the same work count once, as in Usage.
+// rebuildToolRollup groups tool calls into tool_call_cube, and sums that by
+// local day and every summary dimension. Mirrors of the same work count once,
+// as in Usage.
 func (c *Catalog) rebuildToolRollup(ctx context.Context, generation, day string) error {
 	workspaces, err := queryMapsContext(ctx, c.DB, `SELECT w.id,w.source_kind,w.activity_at FROM workspaces w
 		WHERE EXISTS(SELECT 1 FROM tool_calls t WHERE t.workspace_id=w.id)`)
@@ -322,34 +366,43 @@ func (c *Catalog) rebuildToolRollup(ctx context.Context, generation, day string)
 	if err != nil {
 		return err
 	}
-	tx, err := c.DB.BeginTx(ctx, nil)
+	// Grouping every call takes up to half a minute, so the cube is built in
+	// a temporary table first, which takes no lock that would stall a sync;
+	// the write transaction only copies it in. Temporary tables belong to
+	// one connection.
+	conn, err := c.DB.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	defer conn.ExecContext(context.Background(), "DROP TABLE IF EXISTS temp.tool_cube_build")
+	for _, statement := range []string{"DROP TABLE IF EXISTS temp.tool_mirror_build", "DROP TABLE IF EXISTS temp.tool_cube_build",
+		"CREATE TEMP TABLE tool_mirror_build(workspace_id TEXT PRIMARY KEY)"} {
+		if _, err := conn.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	for _, id := range suppressed {
+		if _, err := conn.ExecContext(ctx, "INSERT OR IGNORE INTO temp.tool_mirror_build(workspace_id) VALUES(?)", id); err != nil {
+			return err
+		}
+	}
+	if _, err := conn.ExecContext(ctx, "CREATE TEMP TABLE tool_cube_build AS "+toolCubeSelect("temp.tool_mirror_build")); err != nil {
+		return err
+	}
+	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec("DELETE FROM tool_mirror_workspaces"); err != nil {
-		return err
-	}
-	for _, id := range suppressed {
-		if _, err := tx.Exec("INSERT OR IGNORE INTO tool_mirror_workspaces(workspace_id) VALUES(?)", id); err != nil {
+	for _, statement := range []string{"DELETE FROM tool_mirror_workspaces",
+		"INSERT INTO tool_mirror_workspaces(workspace_id) SELECT workspace_id FROM temp.tool_mirror_build",
+		"DROP TABLE IF EXISTS main.tool_call_cube", "CREATE TABLE main.tool_call_cube AS SELECT * FROM temp.tool_cube_build"} {
+		if _, err := tx.ExecContext(ctx, statement); err != nil {
 			return err
 		}
 	}
-	rows, err := queryMapsContext(ctx, tx, `SELECT date(t.started_at,'localtime') day,r.display_name repository_name,w.source_kind,t.provider,
-			COALESCE(t.model,'') model,COALESCE(a.kind,'root') session_kind,t.tool_name,t.tool_category,t.mcp_server,t.program,t.subcommand,t.command_category,
-			COUNT(*) call_count,SUM(COALESCE(t.status,'')='error') error_count,SUM(COALESCE(t.status,'')='no_result') no_result_count,
-			SUM(COALESCE(t.error_type,'')='user_rejected') rejected_count,SUM(t.interrupted) interrupted_count,SUM(COALESCE(t.error_type,'')='timeout') timeout_count,
-			SUM(COALESCE(t.error_type,'')='nonzero_exit') nonzero_exit_count,SUM(COALESCE(t.error_type,'')='hook_blocked') hook_blocked_count,SUM(t.truncated) truncated_count,
-			COUNT(t.duration_ms) timed_count,COALESCE(SUM(t.duration_ms),0) total_duration_ms,MAX(t.duration_ms) max_duration_ms,
-			SUM(t.input_bytes) input_bytes,SUM(t.result_bytes) result_bytes,SUM(t.result_tokens) result_tokens,
-			SUM(COALESCE(t.result_tokens_source,'')='measured') measured_count,SUM(t.carried_tokens) carried_tokens,SUM(t.output_tokens) output_tokens,
-			COALESCE(SUM(t.lines_added),0) lines_added,COALESCE(SUM(t.lines_removed),0) lines_removed,COUNT(DISTINCT t.workspace_id) work_count
-		FROM tool_calls t
-		JOIN workspaces w ON w.id=t.workspace_id
-		LEFT JOIN repositories r ON r.id=w.repository_id
-		LEFT JOIN agent_sessions a ON a.id=t.agent_session_id
-		WHERE t.workspace_id NOT IN (SELECT workspace_id FROM tool_mirror_workspaces)
-		GROUP BY 1,2,3,4,5,6,7,8,9,10,11,12`)
+	rows, err := queryMapsContext(ctx, tx, toolRollupFromCube)
 	if err != nil {
 		return err
 	}

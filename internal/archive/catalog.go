@@ -18,8 +18,11 @@ type Catalog struct {
 	Path    string
 	DB      *sql.DB
 	library libraryCache
-	health  healthCache
-	tools   toolLedgerState
+	derived derivedCache
+	// quietVersion and warmVersion are the catalog versions warmCaches last
+	// saw and warmed; only the Library maintenance loop uses them.
+	quietVersion, warmVersion int64
+	tools                     toolLedgerState
 	// authorship tracks the human-authorship rebuild.
 	authorship authorshipState
 	wal        walBound
@@ -68,9 +71,9 @@ func (c *Catalog) Close() error {
 	c.library.mu.Lock()
 	c.library.close()
 	c.library.mu.Unlock()
-	c.health.mu.Lock()
-	c.health.close()
-	c.health.mu.Unlock()
+	c.derived.mu.Lock()
+	c.derived.close()
+	c.derived.mu.Unlock()
 	// The last connection to close deletes the WAL, but only when no other
 	// process (an MCP server, the app) has the catalog open. Empty it either
 	// way so the next opener, possibly on another Mac, has no log to replay.
@@ -178,6 +181,14 @@ func (c *Catalog) Initialize() error {
 			}
 		}
 	}
+	// Holds every column the Library's rows read (libraryWorkspaceFields), so
+	// building them reads this, not the workspace rows, whose purpose and
+	// outcome text spills onto overflow pages ahead of the later columns.
+	// Created here, once the migrations above have added those columns.
+	if _, err := c.DB.Exec(`CREATE INDEX IF NOT EXISTS workspaces_library_idx ON workspaces(id,title,source_kind,activity_at,
+		branch,owner,flavor,version,lifecycle,preservation_completeness,main_merge_title,location,repository_id)`); err != nil {
+		return err
+	}
 	if err := c.migrateHosts(); err != nil {
 		return err
 	}
@@ -250,7 +261,12 @@ func (c *Catalog) Initialize() error {
 	if err := c.backfillConversationDocuments(); err != nil {
 		return err
 	}
-	if err := c.backfillSemanticVectors(); err != nil {
+	for _, store := range []vectorStore{workspaceVectors, conversationVectors} {
+		if err := c.backfillVectors(store); err != nil {
+			return err
+		}
+	}
+	if err := c.ensureMessageCount(); err != nil {
 		return err
 	}
 	if err := c.syncPricing(); err != nil {
@@ -649,6 +665,9 @@ func (c *Catalog) Search(options SearchOptions) (map[string]any, error) {
 // fields (nil: every column); see libraryFields.
 func (c *Catalog) searchRows(options SearchOptions, fields libraryFields) ([]map[string]any, error) {
 	if options.unfiltered() {
+		c.library.mu.Lock()
+		c.library.usedAt = time.Now()
+		c.library.mu.Unlock()
 		return c.cachedLibraryRows(options.context(), fields)
 	}
 	return c.computeSearchRows(options, fields)
@@ -662,9 +681,14 @@ func (c *Catalog) computeSearchRows(options SearchOptions, fields libraryFields)
 	if parsed := ftsQuery(options.Query); strings.TrimSpace(options.Query) != "" && parsed != "" {
 		// FTS5 ranks the matches itself; only the best 500 are then joined to
 		// their workspaces. Joining every match first read a messages row per
-		// match: seconds for a common word.
+		// match: seconds for a common word. Ranking reads every match's length,
+		// so only the 25,000 most recently indexed are ranked, whose lengths are
+		// stored together: a word in more messages than that (a million hold
+		// "the") took up to seconds to rank, and says little about the work.
 		matches, err := queryMapsContext(ctx, c.DB, `SELECT c.workspace_id FROM
-			(SELECT message_id,rank FROM messages_fts WHERE messages_fts MATCH ? ORDER BY rank LIMIT 500) f
+			(SELECT message_id,rank FROM messages_fts WHERE messages_fts MATCH ?1 AND rowid>=COALESCE(
+				(SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?1 ORDER BY rowid DESC LIMIT 1 OFFSET 24999),0)
+			ORDER BY rank LIMIT 500) f
 			JOIN messages m ON m.id=f.message_id JOIN conversations c ON c.id=m.conversation_id ORDER BY f.rank`, parsed)
 		if err != nil {
 			return nil, err
@@ -705,12 +729,14 @@ func (c *Catalog) computeSearchRows(options SearchOptions, fields libraryFields)
 		where = append(where, "(w.owner LIKE ? OR r.owner LIKE ?)")
 		args = append(args, "%"+options.Owner+"%", "%"+options.Owner+"%")
 	}
+	// A filter on another table selects its workspaces once, rather than
+	// probing that table for each of tens of thousands of workspaces.
 	if options.Provider != "" {
-		where = append(where, "EXISTS(SELECT 1 FROM conversations cp WHERE cp.workspace_id=w.id AND cp.provider=?)")
+		where = append(where, "w.id IN (SELECT cp.workspace_id FROM conversations cp WHERE cp.provider=?)")
 		args = append(args, options.Provider)
 	}
 	if options.Model != "" {
-		where = append(where, "EXISTS(SELECT 1 FROM conversations cm WHERE cm.workspace_id=w.id AND cm.model LIKE ?)")
+		where = append(where, "w.id IN (SELECT cm.workspace_id FROM conversations cm WHERE cm.model LIKE ?)")
 		args = append(args, "%"+options.Model+"%")
 	}
 	if options.From != "" {
@@ -734,11 +760,11 @@ func (c *Catalog) computeSearchRows(options SearchOptions, fields libraryFields)
 		args = append(args, "%"+options.Outcome+"%")
 	}
 	if options.Error != "" {
-		where = append(where, "EXISTS(SELECT 1 FROM metric_ledger ml WHERE ml.workspace_id=w.id AND ml.error_type LIKE ?)")
+		where = append(where, "w.id IN (SELECT ml.workspace_id FROM metric_ledger ml WHERE ml.error_type LIKE ?)")
 		args = append(args, "%"+options.Error+"%")
 	}
 	if options.Metric != "" {
-		clause := []string{"mx.workspace_id=w.id", "mx.name=?"}
+		clause := []string{"mx.name=?"}
 		args = append(args, options.Metric)
 		if options.Minimum != nil {
 			clause = append(clause, "mx.value>=?")
@@ -748,21 +774,21 @@ func (c *Catalog) computeSearchRows(options SearchOptions, fields libraryFields)
 			clause = append(clause, "mx.value<=?")
 			args = append(args, *options.Maximum)
 		}
-		where = append(where, "EXISTS(SELECT 1 FROM metrics mx WHERE "+strings.Join(clause, " AND ")+")")
+		where = append(where, "w.id IN (SELECT mx.workspace_id FROM metrics mx WHERE "+strings.Join(clause, " AND ")+")")
 	}
 	if options.File != "" {
 		pattern := options.File
 		if !strings.Contains(pattern, "%") {
 			pattern = "%" + pattern + "%"
 		}
-		where = append(where, "EXISTS(SELECT 1 FROM change_sets cs JOIN change_files cf ON cf.change_set_id=cs.id WHERE cs.workspace_id=w.id AND cf.path LIKE ?)")
+		where = append(where, "w.id IN (SELECT cs.workspace_id FROM change_files cf JOIN change_sets cs ON cs.id=cf.change_set_id WHERE cf.path LIKE ?)")
 		args = append(args, pattern)
 	}
 	if options.ChangedOnly {
-		where = append(where, "EXISTS(SELECT 1 FROM change_sets x JOIN change_files xf ON xf.change_set_id=x.id WHERE x.workspace_id=w.id)")
+		where = append(where, "w.id IN (SELECT x.workspace_id FROM change_files xf JOIN change_sets x ON x.id=xf.change_set_id)")
 	}
 	if options.PR != nil {
-		where = append(where, "EXISTS(SELECT 1 FROM work_pr_links wpl JOIN pull_requests pr ON pr.id=wpl.pr_id WHERE wpl.workspace_id=w.id AND pr.number=?)")
+		where = append(where, "w.id IN (SELECT wpl.workspace_id FROM work_pr_links wpl JOIN pull_requests pr ON pr.id=wpl.pr_id WHERE pr.number=?)")
 		args = append(args, *options.PR)
 	}
 	rows, err := c.libraryRows(ctx, strings.Join(where, " AND "), args, fields)
@@ -784,7 +810,7 @@ func (c *Catalog) computeSearchRows(options SearchOptions, fields libraryFields)
 	rows = c.suppressMirrors(rows)
 	// Costs take a ledger scan; a page without them gets them in libraryPage.
 	if fields.hasAny(libraryCostFields) {
-		if err := c.attachWorkspaceCosts(rows); err != nil {
+		if err := c.attachWorkspaceCosts(ctx, rows); err != nil {
 			return nil, err
 		}
 	}
@@ -870,7 +896,7 @@ func (c *Catalog) workDetail(id string, includeMessages bool) (map[string]any, e
 		CASE WHEN a.workspace_id=? THEN b.workspace_id ELSE a.workspace_id END related_workspace_id,
 		CASE WHEN a.workspace_id=? THEN b.provider ELSE a.provider END related_provider
 		FROM conversation_identity_links l JOIN conversations a ON a.id=l.left_id JOIN conversations b ON b.id=l.right_id
-		WHERE a.workspace_id=? OR b.workspace_id=?`, id, id, id, id)
+		WHERE l.left_id IN (SELECT id FROM conversations WHERE workspace_id=?) OR l.right_id IN (SELECT id FROM conversations WHERE workspace_id=?)`, id, id, id, id)
 	result["identity_links"] = links
 	return result, nil
 }
@@ -890,7 +916,10 @@ func (c *Catalog) suppressMirrors(rows []map[string]any) []map[string]any {
 		}
 		return parent[id]
 	}
-	links, _ := queryMaps(c.DB, `SELECT a.workspace_id left_workspace,b.workspace_id right_workspace FROM conversation_identity_links l JOIN conversations a ON a.id=l.left_id JOIN conversations b ON b.id=l.right_id`)
+	links, _ := cachedValue(context.Background(), c, "identity-links", func(context.Context) ([]map[string]any, error) {
+		return queryMaps(c.DB, `SELECT a.workspace_id left_workspace,b.workspace_id right_workspace FROM conversation_identity_links l
+			JOIN conversations a ON a.id=l.left_id JOIN conversations b ON b.id=l.right_id`)
+	})
 	for _, link := range links {
 		left, right := firstString(link["left_workspace"]), firstString(link["right_workspace"])
 		if parent[left] != "" && parent[right] != "" {

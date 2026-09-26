@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS work_items (
   evidence_json TEXT NOT NULL DEFAULT '{}',
   UNIQUE(source_kind, source_account, source_id)
 );
+CREATE INDEX IF NOT EXISTS work_items_workspace_idx ON work_items(workspace_id);
 
 CREATE TABLE IF NOT EXISTS conversations (
   id TEXT PRIMARY KEY,
@@ -120,6 +121,7 @@ CREATE TABLE IF NOT EXISTS conversation_identity_links (
   evidence_json TEXT NOT NULL,
   PRIMARY KEY(left_id,right_id,relationship)
 );
+CREATE INDEX IF NOT EXISTS conversation_identity_links_right_idx ON conversation_identity_links(right_id);
 
 CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY,
@@ -360,6 +362,14 @@ CREATE TABLE IF NOT EXISTS tool_calls (
 CREATE INDEX IF NOT EXISTS tool_calls_conversation_idx ON tool_calls(conversation_id, sequence);
 CREATE INDEX IF NOT EXISTS tool_calls_workspace_idx ON tool_calls(workspace_id);
 CREATE INDEX IF NOT EXISTS tool_calls_started_idx ON tool_calls(started_at);
+-- The Tool calls presets that rank every call by one of these would otherwise
+-- sort the whole table.
+CREATE INDEX IF NOT EXISTS tool_calls_duration_idx ON tool_calls(duration_ms);
+CREATE INDEX IF NOT EXISTS tool_calls_result_tokens_idx ON tool_calls(result_tokens);
+CREATE INDEX IF NOT EXISTS tool_calls_carried_idx ON tool_calls(carried_tokens);
+-- Failures of one kind, newest first. A kind can be one call in ten thousand,
+-- so walking the calls by time to find a page of them reads nearly all.
+CREATE INDEX IF NOT EXISTS tool_calls_error_idx ON tool_calls(error_type, started_at) WHERE error_type IS NOT NULL;
 
 -- The simple commands of a shell tool call, in order. Operator is the shell
 -- control operator joining a command to the previous one ("script" when a
@@ -399,7 +409,8 @@ CREATE TABLE IF NOT EXISTS tool_ledger_state (
 
 -- Daily tool rollup served by the Tools table, rebuilt from tool_calls when
 -- the ledger changes. Mirrored workspaces (see suppressMirrors) are excluded
--- here and listed in tool_mirror_workspaces for per-call queries.
+-- here and listed in tool_mirror_workspaces for per-call queries. It is summed
+-- from tool_call_cube, which rebuildToolRollup creates (see tool_cube.go).
 CREATE TABLE IF NOT EXISTS tool_usage_daily (
   id TEXT PRIMARY KEY,
   day TEXT,
@@ -481,11 +492,28 @@ CREATE TABLE IF NOT EXISTS semantic_documents (
   indexed_at TEXT NOT NULL
 );
 
+-- The message IDs of each workspace's Library preview (see library.go).
+-- Marking a workspace dirty for the Library projection drops its row, so a
+-- build that does not know this table never leaves a stale one behind.
+CREATE TABLE IF NOT EXISTS workspace_previews (
+  workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
+  first_input_id TEXT,
+  last_response_id TEXT
+);
+CREATE TABLE IF NOT EXISTS workspace_library_dirty (
+  workspace_id TEXT PRIMARY KEY) WITHOUT ROWID;
+CREATE TRIGGER IF NOT EXISTS workspace_previews_stale
+AFTER INSERT ON workspace_library_dirty BEGIN
+  DELETE FROM workspace_previews WHERE workspace_id=NEW.workspace_id;
+END;
+
 -- Each semantic_documents vector again, as little-endian float32s: a Library
 -- search scores every workspace, and reading and parsing vector_json for all
 -- of them took seconds. vector_json stays for builds that predate this table.
 -- When one of them rewrites a vector, the trigger drops the stale copy; search
 -- reads vector_json for a workspace without one until Initialize restores it.
+-- conversation_vectors does the same for conversation_documents, which the
+-- MCP conversation search scores.
 CREATE TABLE IF NOT EXISTS semantic_vectors (
   workspace_id TEXT PRIMARY KEY REFERENCES semantic_documents(workspace_id) ON DELETE CASCADE,
   vector BLOB NOT NULL
@@ -493,6 +521,14 @@ CREATE TABLE IF NOT EXISTS semantic_vectors (
 CREATE TRIGGER IF NOT EXISTS semantic_vectors_stale
 AFTER UPDATE OF vector_json ON semantic_documents BEGIN
   DELETE FROM semantic_vectors WHERE workspace_id=OLD.workspace_id;
+END;
+CREATE TABLE IF NOT EXISTS conversation_vectors (
+  conversation_id TEXT PRIMARY KEY REFERENCES conversation_documents(conversation_id) ON DELETE CASCADE,
+  vector BLOB NOT NULL
+);
+CREATE TRIGGER IF NOT EXISTS conversation_vectors_stale
+AFTER UPDATE OF vector_json ON conversation_documents BEGIN
+  DELETE FROM conversation_vectors WHERE conversation_id=OLD.conversation_id;
 END;
 
 CREATE TABLE IF NOT EXISTS task_attempts (
@@ -525,6 +561,7 @@ CREATE TABLE IF NOT EXISTS handoffs (
   closure_evidence_json TEXT NOT NULL DEFAULT '{}',
   created_at TEXT
 );
+CREATE INDEX IF NOT EXISTS handoffs_workspace_idx ON handoffs(workspace_id, created_at);
 
 CREATE TABLE IF NOT EXISTS change_sets (
   id TEXT PRIMARY KEY,
@@ -589,6 +626,8 @@ CREATE TABLE IF NOT EXISTS metrics (
   observed_at TEXT,
   UNIQUE(workspace_id, conversation_id, name, extractor_version)
 );
+-- Ranks work by one metric (query_metrics) without visiting every workspace.
+CREATE INDEX IF NOT EXISTS metrics_name_value_idx ON metrics(name, value);
 CREATE TABLE IF NOT EXISTS workspace_query_stats (
   workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
   token_count REAL

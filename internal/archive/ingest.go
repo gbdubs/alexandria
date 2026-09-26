@@ -1234,7 +1234,7 @@ func upsertSummary(tx *sql.Tx, workspaceID string, record WorkspaceRecord) error
 	if err != nil {
 		return err
 	}
-	return storeSemanticVector(tx, workspaceID, vector)
+	return workspaceVectors.store(tx, workspaceID, vector)
 }
 
 func upsertChanges(tx *sql.Tx, workspaceID string, changes []map[string]any) error {

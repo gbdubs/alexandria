@@ -41,7 +41,11 @@ var toolRollupDataset = func() sqlDataset {
 var toolCallDataset = sqlDataset{
 	from: `FROM tool_calls t JOIN workspaces w ON w.id=t.workspace_id LEFT JOIN repositories r ON r.id=w.repository_id
 		LEFT JOIN agent_sessions a ON a.id=t.agent_session_id`,
-	base: "t.workspace_id NOT IN (SELECT workspace_id FROM tool_mirror_workspaces)",
+	base:      "t.workspace_id NOT IN (SELECT workspace_id FROM tool_mirror_workspaces)",
+	countFrom: "FROM tool_calls t", countAlias: "t",
+	buckets: map[string]string{"day": "t.started_at", "week": "t.started_at", "month": "t.started_at"},
+	cube:    toolCallCube,
+	lookups: map[string]bool{"id": true, "conversation_id": true, "workspace_id": true},
 	columns: map[string]string{
 		"id": "t.id", "call_id": "t.call_id", "sequence": "t.sequence",
 		"started_at": "t.started_at", "ended_at": "t.ended_at",

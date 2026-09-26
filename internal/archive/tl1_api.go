@@ -1,11 +1,13 @@
 package archive
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 )
 
 // getTL1 serves the TL1 tab:
@@ -193,6 +195,13 @@ func (c *Catalog) TL1Candidate(installationID, candidateID string) (map[string]a
 	}
 	return map[string]any{"installation": data.Installation, "candidate": candidate, "cost_usd": total, "tasks": tasks,
 		"events": pick(data.Events), "review_findings": pick(data.Findings), "human_touches": pick(data.Touches)}, nil
+}
+
+// cachedTL1AttemptRows returns tl1AttemptRows, kept until the next commit.
+func (c *Catalog) cachedTL1AttemptRows(ctx context.Context) ([]map[string]any, error) {
+	return cachedValue(ctx, c, "tl1-attempts:"+time.Local.String(), func(context.Context) ([]map[string]any, error) {
+		return c.tl1AttemptRows()
+	})
 }
 
 // tl1AttemptRows backs the tl1_attempts query table: one row per attempt in
