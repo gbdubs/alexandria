@@ -190,6 +190,12 @@ embedded service (`local.ai-work-archive.service`), then the bundle
 | `PHAROS_CODESIGN_IDENTITY` | Keychain signing identity (name or SHA-1). Unset: ad-hoc signing. |
 | `PHAROS_HARDENED_RUNTIME=0` | Sign without the hardened runtime, for example to attach a debugger. |
 | `PHAROS_UNIVERSAL=1` | Build arm64 and x86_64 slices with `lipo` instead of the native architecture only. |
+| `PHAROS_VERSION` | Set both bundle version fields to a numeric `major.minor.patch`; defaults to `0.2.0` for local builds. |
+| `PHAROS_CODESIGN_TIMESTAMP=1` | Request a secure signing timestamp, required for Developer ID notarization. |
+
+The local [release workflow and proposed in-app update flow](releases-and-updates.md)
+use these settings to publish ad hoc signed versioned GitHub releases by
+default, with optional Developer ID signing and notarization.
 
 A stable identity matters when Pharos runs from an external drive. macOS asks
 before an app reads files on a removable volume and records the answer against
