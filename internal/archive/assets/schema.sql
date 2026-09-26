@@ -192,6 +192,7 @@ CREATE INDEX IF NOT EXISTS message_authorship_day_idx ON message_authorship(day)
 -- Prose messages by role and time, for the human-authorship rebuild.
 CREATE INDEX IF NOT EXISTS messages_prose_idx ON messages(role, created_at) WHERE kind='message';
 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(message_id UNINDEXED, text, tokenize='unicode61');
+CREATE VIRTUAL TABLE IF NOT EXISTS messages_vocab USING fts5vocab(messages_fts, 'row');
 CREATE TABLE IF NOT EXISTS message_fts_rows (
   message_id TEXT PRIMARY KEY,
   fts_rowid INTEGER NOT NULL UNIQUE

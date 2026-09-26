@@ -107,17 +107,18 @@ beside the app, or just open the app and accept the panel again.
 
 ### 4. Find past work
 
-The **Library** tab searches every conversation by content, repository, file
-changed, or PR. Every table in Pharos is a query builder: pick columns, filter
-(including OR and NOT), sort on several keys, add metrics, and save the views you
-use often.
+The **Library** search has three modes: conversation text, modified files, and
+URLs used by tool calls. Text results group user messages, agent responses, and
+retained thinking by conversation, with a link to the matching message. Put a
+phrase in quotes for an exact phrase match. Fuzzy words are on by default;
+case-sensitive and literal-separator matching are optional. Text search uses
+the message index directly and does not rank workspaces with vectors. File
+results name a conversation when the archived evidence supports that link;
+otherwise they identify the workspace. URL results exclude links merely
+returned by web search.
 
-A search matches whole words, related terms, and, with **Match inside words**,
-text inside a word in your conversations: `log_que` finds `catalog_query`. With
-**Show why each result matched**, each result shows its matching messages with
-the match highlighted, each a link into the conversation, and a score breakdown
-that says which of your words matched which words, and how much of a related
-match is hashing noise rather than shared words. Both are on by default.
+With an empty search, the Library table remains a query builder: pick columns,
+filter (including OR and NOT), sort on several keys, add metrics, and save views.
 
 Open a row to see its changed files, linked PRs, and conversations. Each
 conversation reads turn by turn: your prompt, the outcome, and every command,

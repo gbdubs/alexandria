@@ -48,7 +48,7 @@ use the shared query-table pattern: schema-driven columns, field discovery,
 filtering (including OR/NOT), multi-sort, paging, persistent saved views,
 optional aggregate metrics, column reorder, and resize.
 
-- **Library** searches content, repositories, source types, and actual changed-file inventory. A search matches whole words anywhere, related terms through the local concept index, and, with **Match inside words** (on by default), three or more characters inside a word in conversation messages (`log_que` finds `catalog_query`). Quoted multi-word text requires consecutive words in one message (for example, `"authentication error"`); any unquoted text must also match through the usual word, substring, or related-term search. Tool output is matched by whole words and quoted phrases only, since a substring index over it would be many times its size. With **Show why each result matched** (also on by default), each result lists its matching messages with the matched text marked and a link to each message. Its score breakdown shows the text rank and, for related terms, which of your words matched which words and fields, and how much of the similarity is hashing noise rather than shared words. Catalogs from before the substring index build it in the background (shown under Library drive). **Sub-agents** (delegated sessions, including nested ones), **Sub-agent depth** (deepest nesting below the workspace's own session), and **Compactions** (context compactions across the workspace's sessions) are filterable, sortable, and groupable number fields. Work detail shows evidence-linked summaries, attempted/checkpointed/integrated changes, conversations, metrics, PR associations, and receipts.
+- **Library** searches conversation text, changed files, and tool URLs. Text search reads retained user messages, agent responses, and thinking from `messages_fts`, groups hits by conversation, and links to the matching message. Unquoted words use AND; fuzzy expansion reads nearby vocabulary terms, while quoted phrases match in order. Case and separator matching are optional. The UI's text search does not use workspace vectors. File search uses `change_files`; a file change has workspace scope and is attributed to a conversation only when its work item, time span, or sole-conversation workspace supports that link. URL search reads `tool_urls` and excludes unopened web-search result links. With no search, the Library table still offers repository, source, PR, sub-agent, compaction, cost, and other structured filters. Work detail shows evidence-linked summaries, attempted/checkpointed/integrated changes, conversations, metrics, PR associations, and receipts.
 
 Past Work also shows when an archived commit appears on the local `origin/main` history. It links the first mainline commit containing that work, whether it arrived through a merge commit or directly. This uses local Git objects only; squash merges and work without a retained commit ID cannot be attributed by ancestry. Refresh the local `origin/main` ref and index a source to update these associations.
 - **TL1** appears once a TL1 source is indexed. It compares each flavor across agent configurations (advance, escalation, and agent error rates, cost per useful result, time, tokens, cache reuse), clusters errors by normalized signature and who can fix them, traces human attention and review findings to their causes, segments work by TL1's large enqueues (defaulting to the latest, so analysis follows the most recent flavor revisions), and ranks concerns and savings opportunities, each with a copyable investigation prompt. Flavor and candidate drill-downs and a per-run query table sit underneath. See [`docs/tl1-analysis.md`](tl1-analysis.md).
@@ -86,12 +86,13 @@ No claim is made that ChatGPT desktop’s local cache is complete. ChatGPT is in
 
 ## Search, API, and MCP
 
-Exact file-change searches use `change_files`, distinct from conversation mentions. Repository, source, PR, task, and metrics queries use structured data. Natural-language results combine FTS with a deterministic on-device concept/feature embedding; no archive content leaves the machine. Substring matches come from a contentless FTS5 trigram index over conversation prose (`messages_trigram`, sharing `messages_fts` rowids). Because the concept embedding hashes known features (words, word pairs, and three-letter pieces), a result's similarity splits exactly into the features it shares with the query and hash collisions; Library explanations report both. Extractive summaries cite retained source locators. Inference can be replaced or extended later without becoming a reclamation prerequisite.
+The Library UI uses `/api/library/find` for text, file, and URL searches. Its text path uses FTS vocabulary and message verification without vector ranking. Legacy `/api/search`, query-table `search=`, and MCP conversation discovery still retain the previous concept/feature embedding behavior. No archive content leaves the machine. Extractive summaries cite retained source locators.
 
 The HTTP service binds only to loopback and requires either a bearer token or its HttpOnly UI cookie. Core endpoints are:
 
 ```text
 GET  /api/search?q=&repository=&source=&file=&pr=&substring=&limit=&offset=
+GET  /api/library/find?kind=text|file|url&q=&fuzzy=&case=&separators=&limit=&offset=
 GET  /api/search/status
 GET  /api/work/{workspace_id}
 GET  /api/conversation/{conversation_id}?limit=&offset=
@@ -122,11 +123,11 @@ the same documents drive the React frontend and Go executor. Pharos uses a
 map-backed Go adapter because the upstream compiler currently emits PostgreSQL;
 the catalog remains SQLite and query values never become SQL text.
 
-Library query requests take `search=` (the search text, with quoted multi-word
-phrases requiring an ordered match in one message), `substring=1` (also
-match inside words), and, on the rows request, `explain=1`, which adds each
-row's `why`: its score parts, its best matching messages with matched text
-marked, and its related-term breakdown.
+Legacy Library query-table requests use `search=` for text; quoted multi-word
+phrases require an ordered match in one message. `substring=1` also matches
+inside words, and the rows request accepts `explain=1` to add each row's `why`:
+its score parts, best matching messages with matched text, and related-term
+breakdown.
 
 Source controls only change ingestion participation or perform an explicit
 read-only refresh. They never delete source data.

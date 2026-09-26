@@ -97,47 +97,19 @@
 
 .semantic-search { display: flex; gap: 9px; width: min(760px, 100%); margin: 0 0 14px; }
 .semantic-search input { flex: 1; min-width: 120px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--ink); padding: 6px 12px; }
+.semantic-search select { min-width: 145px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); color: var(--ink); padding: 6px 8px; }
 .semantic-search button { background: var(--accent); color: var(--panel); }
-.semantic-hint { margin: -6px 0 15px; }
+.library-find-results { width: min(900px, 100%); }
+.library-find-hit { padding: 14px 0; border-top: 1px solid var(--line); }
+.library-find-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 7px 14px; }
+.library-find-head button { color: var(--accent); font-weight: 650; text-align: left; padding: 0; }
+.library-find-head span { color: var(--muted); font-size: var(--fs-sm); }
+.library-find-snippet { margin: 8px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.library-find-open { color: var(--accent); padding: 0; font-size: var(--fs-sm); }
+.library-find-pages { display: flex; align-items: center; gap: 12px; margin: 16px 0; }
 .search-options { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: -6px 0 14px; color: var(--muted); font-size: var(--fs-sm); }
 .search-options label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .search-options input { margin: 0; accent-color: var(--accent); }
-.search-index-note { color: var(--warn); }
-/* Why a Library result matched: chips in the table and cards, details in a dialog. */
-.qt-work-why { display: grid; gap: 4px; min-width: 0; padding: 2px 0; }
-.why-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 0 !important; border: 0; background: transparent; cursor: pointer; text-align: left; }
-.why-chip { padding: 1px 7px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink); font-size: var(--fs-xs); white-space: nowrap; }
-.why-chip.text { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
-.why-chip.substring { border-color: color-mix(in srgb, var(--heat-0) 45%, var(--line)); background: color-mix(in srgb, var(--heat-0) 10%, var(--panel)); }
-.why-chip.related { border-color: color-mix(in srgb, var(--heat-1) 45%, var(--line)); background: color-mix(in srgb, var(--heat-1) 10%, var(--panel)); }
-.why-chip.weak { border-style: dashed; color: var(--muted); background: transparent; }
-.why-chips:hover .why-chip { border-color: var(--accent); }
-.why-inline { margin-top: 14px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 6px; }
-.why-inline-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.why-inline-head .result-message-label { margin: 0; }
-.why-inline-related { margin: 8px 0 0; font-size: var(--fs-sm); }
-.why-details-link { margin-top: 6px; padding: 0 !important; border: 0; background: transparent; color: var(--accent); font-size: var(--fs-sm); text-decoration: underline; text-underline-offset: 2px; }
-.why-messages { display: grid; gap: 7px; margin: 8px 0 0; padding: 0; list-style: none; }
-.why-messages li { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: var(--fs-sm); line-height: 1.45; }
-.why-open { flex: 0 0 auto; min-width: 74px; padding: 1px 7px !important; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--accent); font-size: var(--fs-xs); }
-.why-open:hover { border-color: var(--accent); }
-.why-snippet { min-width: 0; overflow-wrap: anywhere; }
-.why-snippet mark { padding: 0 1px; border-radius: 2px; background: color-mix(in srgb, var(--find-marker) 55%, transparent); color: inherit; }
-.why-dialog { width: min(860px, 100%); max-height: min(88vh, 900px); }
-.why-dialog h2 { margin: 0 0 5px; font: 650 var(--fs-2xl)/1.2 var(--serif); }
-.why-section { margin-top: 18px; }
-.why-section > p { margin: 0 0 6px; }
-.why-bar { display: flex; height: 8px; overflow: hidden; border-radius: 4px; background: var(--line); }
-.why-bar i, .why-formula i { display: block; background: var(--accent); }
-.why-bar i.related, .why-formula i.related { background: var(--heat-1); }
-.why-formula { margin: 8px 0 0; padding: 0; list-style: none; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
-.why-formula li { display: flex; align-items: center; gap: 7px; margin: 3px 0; }
-.why-formula i { width: 10px; height: 10px; border-radius: 3px; }
-.why-warning { padding: 7px 10px; border-left: 3px solid var(--warn); background: color-mix(in srgb, var(--warn) 10%, var(--panel)); font-size: var(--fs-sm); }
-.why-terms { width: 100%; margin: 6px 0; border-collapse: collapse; font-size: var(--fs-sm); }
-.why-terms th, .why-terms td { padding: 5px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
-.why-terms th { color: var(--muted); font-weight: 600; }
-.why-terms .num { text-align: right; font-variant-numeric: tabular-nums; }
 .library-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .library-view-toggle { display: inline-flex; padding: 3px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); }
 .library-view-toggle button { padding: 4px 11px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); }

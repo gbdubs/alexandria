@@ -208,6 +208,18 @@ func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 		options.ctx = r.Context()
 		value, err := s.Catalog.Search(options)
 		writeResult(w, value, err)
+	case path == "/api/library/find":
+		q := r.URL.Query()
+		value, err := s.Catalog.LibraryFind(r.Context(), LibraryFindOptions{
+			Kind: q.Get("kind"), Query: q.Get("q"), Fuzzy: q.Get("fuzzy") != "0",
+			CaseSensitive: q.Get("case") == "1", Separators: q.Get("separators") == "1",
+			Limit: queryInt(r, "limit", 50), Offset: queryInt(r, "offset", 0),
+		})
+		if err != nil {
+			writeError(w, err, http.StatusBadRequest)
+		} else {
+			writeJSON(w, value, http.StatusOK)
+		}
 	case strings.HasPrefix(path, "/api/work/"):
 		id := strings.TrimPrefix(path, "/api/work/")
 		value, err := s.Catalog.WorkDetail(id)
