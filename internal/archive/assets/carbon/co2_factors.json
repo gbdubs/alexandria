@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "retrieved_at": "2026-09-25",
+  "tiers": [
+    {
+      "key": "small",
+      "label": "Small models",
+      "match": ["haiku", "-mini", "-nano", "luna", "spark", "flash", "lite"],
+      "output_wh_per_mtok": {"low": 30, "central": 100, "high": 300},
+      "basis": "Assumption. The floor is a best-case GB200 throughput measurement for a large MoE model (about 25 Wh per 1M output tokens, GPU only) scaled for host and idle servers; small models run several times cheaper than mid-size ones on ML.ENERGY's measurements.",
+      "sources": ["lmsys-gb200", "mlenergy-v3", "google-2025"]
+    },
+    {
+      "key": "large",
+      "label": "Large models",
+      "match": ["opus", "fable", "mythos", "astra", "-pro"],
+      "output_wh_per_mtok": {"low": 250, "central": 900, "high": 2500},
+      "basis": "Microsoft Research measured a median 0.31 Wh per query for >200B-parameter models on H100 nodes (about 300 output tokens, PUE included), about 860 Wh per 1M output tokens before PUE. The high end follows the Jegham et al. benchmark and Couch's coding-agent estimate; the low end allows for Blackwell (about 35% less energy than H100).",
+      "sources": ["oviedo-2026", "jegham-2025", "couch-2026", "mlenergy-v3"]
+    },
+    {
+      "key": "medium",
+      "label": "Mid-size models",
+      "match": ["sonnet", "terra", "sol", "codex", "gpt"],
+      "output_wh_per_mtok": {"low": 100, "central": 400, "high": 1200},
+      "basis": "Anchored to provider disclosures for a typical chat answer of a few hundred tokens: Google's median Gemini prompt at 0.24 Wh and OpenAI's average ChatGPT query at 0.34 Wh; ML.ENERGY measured a 235B MoE model at about 110 Wh per 1M tokens, GPU only.",
+      "sources": ["google-2025", "altman-2025", "mlenergy-v3", "epoch-2025"]
+    }
+  ],
+  "default_tier": "medium",
+  "ratios": {
+    "uncached_input": {
+      "low": 0.1, "central": 0.2, "high": 0.4,
+      "basis": "No provider publishes energy by token type. Prefill runs compute-bound and batches well, while decode is memory-bound, so an input token costs a fraction of an output token. Central follows Anthropic's 1:5 input:output price ratio (OpenAI's is about 1:8); the high end is Epoch AI's long-context model, which includes attention over the whole prompt.",
+      "sources": ["fernandez-2025", "epoch-2025", "couch-2026", "anthropic-pricing"]
+    },
+    "cache_write": {
+      "low": 0.1, "central": 0.2, "high": 0.4,
+      "basis": "Writing a cache entry computes the prompt once, like uncached input, then keeps its KV tensors in memory. Moving a cached KV byte costs about 0.2 nJ against about 100 nJ to recompute it, so storing adds little. Central is 1× uncached input; the high end uses Anthropic's 2× 1-hour cache-write price as a proxy for memory held.",
+      "sources": ["hotcarbon-2026", "anthropic-pricing"]
+    },
+    "cache_read": {
+      "low": 0.002, "central": 0.02, "high": 0.08,
+      "basis": "A cache hit skips recomputing the prompt: loading a Llama-3 70B KV cache took 0.03 s against 1.7 s to recompute it (about 1/56). New tokens still attend over the cached context, which grows with its length. Central is 0.1× uncached input, matching Anthropic's cache-read price; Hausfather's sensitivity range is 1–25% of input.",
+      "sources": ["greencache-2026", "hotcarbon-2026", "hausfather-2026", "anthropic-pricing"]
+    }
+  },
+  "pue": {
+    "low": 1.08, "central": 1.15, "high": 1.3,
+    "basis": "Power usage effectiveness: facility energy ÷ server energy. Google's 2025 fleet average was 1.09 (1.08 in Loudoun County, Virginia), AWS's 1.14, and Microsoft's 1.17. The high end allows for colocation and GPU cloud sites; the industry average is 1.54.",
+    "sources": ["google-pue", "aws-pue", "microsoft-pue"]
+  },
+  "grids": [
+    {
+      "key": "us_average",
+      "label": "US average",
+      "g_co2e_per_kwh": 350,
+      "basis": "EPA eGRID2023 US average output emission rate, 770.9 lb CO₂e/MWh; the latest official eGRID release. Anthropic and OpenAI do not disclose where inference runs.",
+      "sources": ["egrid-2023"]
+    },
+    {
+      "key": "us_virginia",
+      "label": "Virginia and the Carolinas (AWS us-east-1)",
+      "g_co2e_per_kwh": 270,
+      "basis": "EPA eGRID2023 SRVC subregion, 596.3 lb CO₂e/MWh.",
+      "sources": ["egrid-2023"]
+    },
+    {
+      "key": "us_ohio",
+      "label": "Ohio (AWS us-east-2)",
+      "g_co2e_per_kwh": 416,
+      "basis": "EPA eGRID2023 RFCW subregion, 916.1 lb CO₂e/MWh.",
+      "sources": ["egrid-2023"]
+    },
+    {
+      "key": "world",
+      "label": "World average",
+      "g_co2e_per_kwh": 458,
+      "basis": "Ember Global Electricity Review 2026: global power-sector intensity in 2025.",
+      "sources": ["ember-2026"]
+    },
+    {
+      "key": "google_market",
+      "label": "Clean-energy contracts (Google, market-based)",
+      "g_co2e_per_kwh": 94,
+      "basis": "Google's market-based factor for Gemini serving, after its clean-energy purchases. Market-based accounting credits contracts rather than the grid a data center draws from.",
+      "sources": ["google-2025"]
+    }
+  ],
+  "default_grid": "us_average",
+  "equivalents": [
+    {"key": "car_miles", "label": "miles in an average gasoline car", "g_co2e_per_unit": 393, "sources": ["epa-equivalencies"]},
+    {"key": "phone_charges", "label": "smartphone charges", "g_co2e_per_unit": 12.4, "sources": ["epa-equivalencies"]}
+  ],
+  "caveats": [
+    "Anthropic has not published per-token or per-query energy, and OpenAI has published only a single per-query average. Every model tier is an estimate from comparable measured systems.",
+    "Agentic coding sessions are mostly cache reads (96% of tokens in Hausfather's eight weeks), so the cache-read ratio moves the total more than any other factor. The low–high range reflects this.",
+    "Excluded: model training, embodied emissions of the hardware (Google puts them at about 30% of its market-based per-prompt emissions), water, networking, and your own computer.",
+    "Hardware improves quickly: Blackwell GPUs used a median 35% less energy per response than H100 on ML.ENERGY's benchmark, and Google reported a 33× drop in energy per prompt over one year. Past usage on older hardware may be underestimated.",
+    "Sanity check: these central factors put Hausfather's 3.2B-token, eight-week Claude Code workload at about 100 kWh, against his estimate of 170 kWh (70–330)."
+  ],
+  "sources": [
+    {"id": "google-2025", "title": "Measuring the environmental impact of delivering AI at Google Scale (Elsworth, Patterson et al.)", "url": "https://arxiv.org/abs/2508.15734", "published": "2025-08-21", "finding": "Median Gemini Apps text prompt: 0.24 Wh, 0.03 g CO₂e (market-based, 94 g/kWh), including idle machines, host CPU/DRAM, and PUE 1.09; accelerators alone 0.10 Wh."},
+    {"id": "altman-2025", "title": "The Gentle Singularity (Sam Altman, OpenAI)", "url": "https://blog.samaltman.com/the-gentle-singularity", "published": "2025-06-10", "finding": "\"The average query uses about 0.34 watt-hours.\""},
+    {"id": "oviedo-2026", "title": "Energy Use of AI Inference, Efficiency Pathways, and Test-Time Scaling (Oviedo et al., Microsoft; Joule)", "url": "https://arxiv.org/abs/2509.20241", "published": "2026-06-09", "finding": "Frontier models on H100 nodes: median 0.31 Wh per query (IQR 0.16–0.60), rising 13× to 3.91 Wh for 15× longer outputs; common public estimates overstated by 4–20×."},
+    {"id": "mlenergy-v3", "title": "Diagnosing Inference Energy Consumption with the ML.ENERGY Leaderboard v3.0", "url": "https://ml.energy/blog/measurement/energy/diagnosing-inference-energy-consumption-with-the-mlenergy-leaderboard-v30/", "published": "2026-01-29", "finding": "46 models measured on H100 and B200; B200 used a median 35% less energy than H100; reasoning tasks use far more energy per response."},
+    {"id": "jegham-2025", "title": "How Hungry is AI? Benchmarking Energy, Water, and Carbon Footprint of LLM Inference (Jegham et al., v5)", "url": "https://arxiv.org/abs/2505.09598", "published": "2025-11-11", "finding": "1k-input/1k-output prompt: Claude 3.7 Sonnet 2.99 Wh, GPT-5 (minimal reasoning) 2.33 Wh, PUE included; a high-side estimate."},
+    {"id": "epoch-2025", "title": "How much energy does ChatGPT use? (Epoch AI)", "url": "https://epoch.ai/gradient-updates/how-much-energy-does-chatgpt-use", "published": "2025-02-07", "finding": "GPT-4o: about 0.3 Wh for a 500-token answer, about 2.5 Wh with 10k input tokens and about 40 Wh with 100k."},
+    {"id": "lmsys-gb200", "title": "Deploying DeepSeek on GB200 NVL72, part II (LMSYS)", "url": "https://www.lmsys.org/blog/2025-09-25-gb200-part-2/", "published": "2025-09-25", "finding": "26,156 input and 13,386 output tokens per second per GPU at large batch: a best-case throughput floor for per-token energy."},
+    {"id": "fernandez-2025", "title": "Energy Considerations of Large Language Model Inference and Efficiency Optimizations (Fernandez, Luccioni et al., ACL 2025)", "url": "https://aclanthology.org/2025.acl-long.1563.pdf", "published": "2025-07", "finding": "\"Decoding is more energy intensive per token than prefill.\""},
+    {"id": "hotcarbon-2026", "title": "Energy Characterization of KV Cache Offloading Under Agentic Workloads (Mao and Zhou, HotCarbon 2026)", "url": "https://hotcarbon.org/assets/2026/paper-20.pdf", "published": "2026-07", "finding": "Moving one cached KV byte over DRAM and PCIe costs about 0.2 nJ; recomputing it on the GPU costs about 100 nJ, a ≥400× gap."},
+    {"id": "greencache-2026", "title": "GreenCache: carbon-aware KV cache management (Tian et al., v3)", "url": "https://arxiv.org/abs/2505.23970", "published": "2026-04-11", "finding": "Llama-3 70B: 1.7 s time to first token when recomputing, 0.03 s to load the KV cache instead."},
+    {"id": "couch-2026", "title": "Electricity use of AI coding agents (Simon P. Couch)", "url": "https://simonpcouch.com/blog/2026-01-20-cc-impact/", "published": "2026-01-20", "finding": "About 390 Wh per 1M input, 1,950 output, 39 cache-read, and 490 cache-write tokens, from Epoch AI's 100k-context case and Anthropic's price ratios; median Claude Code session about 41 Wh."},
+    {"id": "hausfather-2026", "title": "The real energy use of agentic AI (Zeke Hausfather, The Climate Brink)", "url": "https://www.theclimatebrink.com/p/the-real-energy-use-of-agentic-ai", "published": "2026-08-05", "finding": "3.2B tokens over eight weeks (96% cache reads, 3.6% cache writes, 0.4% output): about 170 kWh (70–330); cache reads at 10% of input energy (1–25%)."},
+    {"id": "anthropic-pricing", "title": "Pricing, Claude API documentation", "url": "https://platform.claude.com/docs/en/about-claude/pricing", "published": "2026-09", "finding": "Output costs 5× input; cache reads 0.1× input; 5-minute cache writes 1.25× and 1-hour writes 2× input."},
+    {"id": "google-pue", "title": "Google data centers: efficiency", "url": "https://datacenters.google/efficiency/", "published": "2026", "finding": "2025 fleet-wide average PUE 1.09; industry average 1.54."},
+    {"id": "aws-pue", "title": "AWS Cloud sustainability (Amazon)", "url": "https://sustainability.aboutamazon.com/products-services/aws-cloud", "published": "2026", "finding": "2025 global average PUE 1.14, down from 1.15 in 2024."},
+    {"id": "microsoft-pue", "title": "Microsoft datacenter efficiency", "url": "https://datacenters.microsoft.com/sustainability/efficiency/", "published": "2025", "finding": "Global design PUE 1.17 in FY25 (1.16 in FY24)."},
+    {"id": "egrid-2023", "title": "EPA eGRID2023 summary data (revision 2)", "url": "https://www.epa.gov/egrid/summary-data", "published": "2025-06-12", "finding": "US average 770.9 lb CO₂e/MWh; subregions SRVC 596.3, RFCW 916.1."},
+    {"id": "ember-2026", "title": "Global Electricity Review 2026 (Ember)", "url": "https://ember-energy.org/latest-insights/global-electricity-review-2026/electricity-demand-and-supply-trends/", "published": "2026", "finding": "Global power-sector emissions intensity 458 g CO₂e/kWh in 2025."},
+    {"id": "epa-equivalencies", "title": "Greenhouse Gas Equivalencies Calculator: calculations and references (EPA)", "url": "https://www.epa.gov/energy/greenhouse-gases-equivalencies-calculator-calculations-and-references", "published": "2026-08-04", "finding": "3.93 × 10⁻⁴ t CO₂e per mile in an average gasoline passenger vehicle; 1.24 × 10⁻⁵ t CO₂ per smartphone charge."}
+  ]
+}

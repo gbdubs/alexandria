@@ -2,14 +2,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import "./tl1.css";
 import { Icon, type IconName } from "./icons";
 
-// The TL1 tab: an installation's performance by flavor and agent
-// configuration, ranked concerns and opportunities with investigation prompts,
+// The TL1 tab: a project's performance by flavor and agent configuration,
+// combined across the Macs that run it, ranked concerns and opportunities with investigation prompts,
 // and drill-downs into flavors, candidates, and individual runs.
 
 type Row = Record<string, any>;
 type Counted = { key: string; count: number };
 type Overview = {
-  installations: Row[]; installation?: Row; since?: string | null; window?: Row; enqueues?: Row[];
+  project?: string; installations: Row[]; since?: string | null; window?: Row; enqueues?: Row[];
   totals?: Row; coverage?: Row; matrix?: Row[]; flavors?: Row[]; graph?: { nodes: Row[]; edges: Row[] };
   errors?: Row[]; candidates?: Row; human?: Row; contract_repairs?: Row[]; reviews?: Row;
   detectors?: Row[]; opportunities?: Row[]; review_prompt?: string;
@@ -92,6 +92,11 @@ const when = (value: unknown) => {
   const date = new Date(String(value ?? ""));
   return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 };
+// When each Mac's TL1 was last read, which differs when the library was last
+// on that Mac.
+const synced = (installations: Row[] = []) => installations.length > 1
+  ? `Synced ${installations.map(item => `${item.host_label || "an unknown Mac"} ${when(item.synced_at)}`).join(", ")}`
+  : `Synced ${when(installations[0]?.synced_at)}`;
 const openWork = (id: unknown) => { if (id) window.alexandriaOpenDetail?.(String(id)); };
 const typing = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || ["SELECT", "TEXTAREA"].includes(target.tagName)
   || (target instanceof HTMLInputElement && !["checkbox", "radio", "button"].includes(target.type)));
@@ -341,8 +346,11 @@ function WindowSummary({ resolved, enqueues, onFlavor, onCurrent }: { resolved: 
 }
 
 export function TL1Page({ attempts, filterAttempts, copy }: Props) {
-  const [installations, setInstallations] = useState<Row[]>([]);
-  const [installation, setInstallation] = useState(() => localStorage.getItem("tl1-installation") ?? "");
+  // TL1 runs as one installation per Mac, so a project may have several.
+  const [projects, setProjects] = useState<Row[]>([]);
+  const [project, setProject] = useState(() => localStorage.getItem("tl1-project") ?? "");
+  // One Mac's installation, or "" for every Mac.
+  const [installation, setInstallation] = useState("");
   const [timeWindow, setTimeWindowState] = useState<TimeWindow>(readWindow);
   const [enqueues, setEnqueues] = useState<Row[]>([]);
   const setTimeWindow = useCallback((next: TimeWindow) => {
@@ -360,9 +368,9 @@ export function TL1Page({ attempts, filterAttempts, copy }: Props) {
 
   const loadInstallations = useCallback(async () => {
     try {
-      const body = await getJSON<{ installations?: Row[] }>("/api/tl1");
-      const found = Array.isArray(body.installations) ? body.installations : [];
-      setInstallations(found);
+      const body = await getJSON<{ projects?: Row[] }>("/api/tl1");
+      const found = Array.isArray(body.projects) ? body.projects : [];
+      setProjects(found);
       const tab = document.getElementById("tl1Tab");
       if (tab) tab.hidden = found.length === 0;
     } catch { /* The tab stays hidden when TL1 data is unavailable. */ }
@@ -373,8 +381,11 @@ export function TL1Page({ attempts, filterAttempts, copy }: Props) {
     return () => window.removeEventListener("alexandria:route", loadInstallations);
   }, [loadInstallations]);
 
-  const selected = installation && installations.some(item => item.installation_id === installation) ? installation : String(installations[0]?.installation_id ?? "");
-  const query = useMemo(() => new URLSearchParams({ installation: selected, ...windowParams(timeWindow, enqueues), scope }).toString(), [selected, timeWindow, enqueues, scope]);
+  const current = projects.find(item => item.project === project) ?? projects[0];
+  const selected = String(current?.project ?? "");
+  const macs: Row[] = current?.installations ?? [];
+  const mac = macs.length > 1 && macs.some(item => item.installation_id === installation) ? installation : "";
+  const query = useMemo(() => new URLSearchParams({ project: selected, ...(mac ? { installation: mac } : {}), ...windowParams(timeWindow, enqueues), scope }).toString(), [selected, mac, timeWindow, enqueues, scope]);
 
   const load = useCallback((signal?: AbortSignal) => {
     if (!selected) return;
@@ -423,16 +434,16 @@ export function TL1Page({ attempts, filterAttempts, copy }: Props) {
   }, [overview]);
 
   const projectWhere = useCallback((): Where => {
-    const project = installations.find(item => item.installation_id === selected)?.project;
-    return project ? [{ field: "project", op: "=", value: project }] : [];
-  }, [installations, selected]);
+    if (mac) return [{ field: "installation_id", op: "=", value: mac }];
+    return selected ? [{ field: "project", op: "=", value: selected }] : [];
+  }, [selected, mac]);
 
   const showRuns = useCallback((filter: Row) => {
     filterAttempts([...Object.entries(filter).map(([field, value]) => ({ field, op: "=", value })), ...windowWhere(), ...projectWhere()]);
     runsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [filterAttempts, windowWhere, projectWhere]);
 
-  if (!installations.length) return <div className="tl1-page"><div className="view-heading"><div><h1>TL1</h1><p className="muted">No TL1 installations are indexed. Enable the tl1 source in Settings and sync it.</p></div></div></div>;
+  if (!projects.length) return <div className="tl1-page"><div className="view-heading"><div><h1>TL1</h1><p className="muted">No TL1 installations are indexed. Enable the tl1 source in Settings and sync it.</p></div></div></div>;
 
   const totals = overview?.totals ?? {};
   const coverage = overview?.coverage ?? {};
@@ -451,15 +462,24 @@ export function TL1Page({ attempts, filterAttempts, copy }: Props) {
       <CopyButton text={overview?.review_prompt ?? ""} label="Copy optimization review prompt" copy={copy} primary />
     </div>
     <div className="tl1-controls" role="group" aria-label="TL1 filters">
-      <label>Installation <select value={selected} onChange={event => {
-        setInstallation(event.target.value);
-        localStorage.setItem("tl1-installation", event.target.value);
-        // A chosen enqueue belongs to the previous installation.
+      <label>Project <select value={selected} onChange={event => {
+        setProject(event.target.value);
+        setInstallation("");
+        localStorage.setItem("tl1-project", event.target.value);
+        // A chosen enqueue belongs to the previous project.
         setEnqueues([]);
         if (timeWindow.mode === "enqueue") setTimeWindow({ mode: "latest" });
       }}>
-        {installations.map(item => <option key={item.installation_id} value={item.installation_id}>{item.project || item.installation_id} · {count(item.tasks)} tasks</option>)}
+        {projects.map(item => <option key={item.project} value={item.project}>{item.project} · {count(item.tasks)} tasks{item.installations?.length > 1 ? ` · ${item.installations.length} Macs` : ""}</option>)}
       </select></label>
+      {macs.length > 1 ? <label>Mac <select value={mac} onChange={event => {
+        setInstallation(event.target.value);
+        setEnqueues([]);
+        if (timeWindow.mode === "enqueue") setTimeWindow({ mode: "latest" });
+      }}>
+        <option value="">All {macs.length} Macs</option>
+        {macs.map(item => <option key={item.installation_id} value={item.installation_id}>{item.host_label || "Unknown Mac"} · {count(item.tasks)} tasks</option>)}
+      </select></label> : null}
       <div className="tl1-segmented" role="group" aria-label="Flavor definitions" title="Current keeps only runs of each flavor's current definition (shape version)">
         <button type="button" aria-pressed={scope === "all"} onClick={() => setScope("all")}>All definitions</button>
         <button type="button" aria-pressed={scope === "current"} onClick={() => setScope("current")}>Current definitions</button>
@@ -471,7 +491,7 @@ export function TL1Page({ attempts, filterAttempts, copy }: Props) {
     {overview ? <>
       <WindowSummary resolved={overview.window ?? {}} enqueues={enqueues} onFlavor={setFlavor} onCurrent={scope === "all" ? () => setScope("current") : undefined} />
       <p className="tl1-coverage muted" title={(coverage.by_executor ?? []).map((row: Row) => `${row.executor}: ${row.with_transcript}/${row.attempts} with transcript, ${row.priced_from_tokens} priced`).join("\n")}>
-        Transcripts found for {pct(coverage.transcript_share)} of LLM runs; cost known for {pct(coverage.cost_share)}. Synced {when(overview.installation?.synced_at)}.
+        Transcripts found for {pct(coverage.transcript_share)} of LLM runs; cost known for {pct(coverage.cost_share)}. {synced(overview.installations)}.
       </p>
       <div className="tl1-tiles">
         <Tile label="Spend" value={usd(totals.cost_usd)} detail={`${count(totals.llm_attempts)} LLM runs · ${count(totals.procedural_attempts)} procedural`} />

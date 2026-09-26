@@ -44,16 +44,16 @@ func (c *Catalog) searchConversations(args map[string]any) (map[string]any, erro
 	lexical := map[string]float64{}
 	matches := map[string]map[string]any{}
 	if parsed := ftsQuery(query); parsed != "" {
-		// As in the Library search (see computeSearchRows), FTS5 ranks the
+		// As in the Library search (see searchEvidence), FTS5 ranks the
 		// most recent matches itself, and only the best 500 are joined to their
 		// conversations. A snippet tokenizes its whole message, so only the
 		// page's cards get one (see conversationCards).
 		rows, err := queryMaps(c.DB, `SELECT m.conversation_id,f.message_id FROM
 			(SELECT message_id,rank FROM messages_fts
 				WHERE messages_fts MATCH ?1 AND rowid>=COALESCE(
-					(SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?1 ORDER BY rowid DESC LIMIT 1 OFFSET 24999),0)
+					(SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?1 ORDER BY rowid DESC LIMIT 1 OFFSET ?2),0)
 				ORDER BY rank LIMIT 500) f
-			JOIN messages m ON m.id=f.message_id ORDER BY f.rank`, parsed)
+			JOIN messages m ON m.id=f.message_id ORDER BY f.rank`, parsed, recentMatches-1)
 		if err != nil {
 			return nil, err
 		}

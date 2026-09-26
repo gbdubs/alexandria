@@ -161,3 +161,61 @@ test('Library filter chips and picker show static option labels while queries an
     assert.deepEqual(errors, []);
   } finally { await browser.close(); }
 });
+
+test('Library search asks for substring matches and explanations by default and shows why each row matched', async () => {
+  const chrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  const browser = await chromium.launch({ headless: true, ...(fs.existsSync(chrome) ? { executablePath: chrome } : {}) });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    const requests = [];
+    const why = {
+      score: 0.43, scan: 500,
+      parts: [{ kind: 'text', value: 0.4, weight: 0.4 }, { kind: 'related', value: 0.03, weight: 0.6 }],
+      substring: { rank: 1, count: 2, terms: ['log_que'], messages: [{ message_id: 'm1', conversation_id: 'c1', role: 'user', kind: 'message', segments: [{ text: 'Why is cata' }, { text: 'log_que', match: true }, { text: 'ry.go slow' }] }] },
+      related: { cosine: 0.05, threshold: 0.05, weight: 0.6, exact: true, signal: 0.01, noise: 0.04, scattered: 0.002,
+        terms: [{ query: 'bug', matched: ['error'], via: 'concept', concept: 'failure', value: 0.008, fields: ['Title'] }], fields: [{ label: 'Title', value: 0.008 }] },
+    };
+    const rows = [{ id: 'work-1', title: 'Speed up catalog queries', source_kind: 'codex', activity_at: '2026-09-23T12:00:00Z', why }];
+    await page.route('http://library-why.test/**', route => {
+      const url = new URL(route.request().url());
+      if (url.pathname === '/' || url.pathname === '/library') return route.fulfill({ contentType: 'text/html', body: html });
+      if (url.pathname === '/assets/query-tables.js') return route.fulfill({ contentType: 'application/javascript', body: fs.readFileSync(path.join(root, 'internal/archive/assets/query-tables.js')) });
+      if (url.pathname === '/assets/query-tables.css') return route.fulfill({ contentType: 'text/css', body: fs.readFileSync(path.join(root, 'internal/archive/assets/query-tables.css')) });
+      if (url.pathname === '/api/search/status') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ substring: { ready: false, done: 3, total: 10 } }) });
+      if (url.pathname === '/api/query/library' && route.request().method() === 'POST') {
+        requests.push(url.search);
+        const explained = url.searchParams.get('explain') === '1';
+        return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ rows: rows.map(row => explained ? row : { ...row, why: undefined }), total: rows.length }) });
+      }
+      if (url.pathname === '/api/query/library/aggregations') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ metrics: [] }) });
+      if (url.pathname === '/api/query/library/distinct') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ values: [], hasMore: false }) });
+      if (url.pathname.startsWith('/api/')) return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'not stubbed' }) });
+      return route.fulfill({ status: 404 });
+    });
+    await page.goto('http://library-why.test/library?search=log_que');
+    const chips = page.locator('#queryTableLibrary .qt-work-why .why-chips');
+    await chips.waitFor();
+    assert.ok(requests.some(search => /substring=1/.test(search) && /explain=1/.test(search)), requests.join('\n'));
+    assert.equal(await chips.innerText(), 'Inside words ×2\nbug ≈ error · weak');
+    assert.match(await page.locator('.semantic-hint').innerText(), /3 of 10 conversations/);
+
+    await chips.click();
+    const dialog = page.getByRole('dialog', { name: 'Why this work matched' });
+    await dialog.waitFor();
+    assert.equal(await dialog.locator('mark').innerText(), 'log_que');
+    assert.match(await dialog.innerText(), /Related concept “failure”/);
+    assert.match(await dialog.innerText(), /Treat this match as weak/);
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'detached' });
+
+    await page.getByLabel('Match inside words').uncheck();
+    await page.getByLabel('Show why each result matched').uncheck();
+    await page.waitForFunction(() => new URL(location.href).searchParams.get('substring') === '0' && new URL(location.href).searchParams.get('why') === '0');
+    await page.waitForFunction(() => !document.querySelector('#queryTableLibrary .why-chips'));
+    const last = requests[requests.length - 1];
+    assert.doesNotMatch(last, /substring=|explain=/);
+    assert.deepEqual(errors, []);
+  } finally { await browser.close(); }
+});

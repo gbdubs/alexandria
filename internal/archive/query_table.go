@@ -23,12 +23,18 @@ func (s *Server) queryTableSchema(dataset string) (querytable.Schema, error) {
 	return querytable.LoadSchema(document)
 }
 
+// librarySearch reads a Library query-table request's search: its text, and
+// substring=1 to match inside words too.
+func librarySearch(ctx context.Context, values url.Values) SearchOptions {
+	return SearchOptions{Query: values.Get("search"), Substring: values.Get("substring") == "1", ctx: ctx}
+}
+
 // queryTableRows returns a dataset's rows. Library rows carry at least fields,
 // the ones the request filters, sorts, or groups on (see libraryFields).
 func (s *Server) queryTableRows(ctx context.Context, dataset string, values url.Values, fields libraryFields) ([]map[string]any, error) {
 	switch dataset {
 	case "library":
-		return s.Catalog.searchRows(SearchOptions{Query: values.Get("search"), ctx: ctx}, fields)
+		return s.Catalog.searchRows(librarySearch(ctx, values), fields)
 	case "activity":
 		payload := s.activity()
 		runs, _ := payload["runs"].([]map[string]any)
@@ -222,7 +228,16 @@ func (s *Server) postQueryTable(w http.ResponseWriter, r *http.Request, dataset,
 		for _, order := range query.OrderBy {
 			needed = append(needed, order.Field)
 		}
-		rows, err := s.queryTableRows(r.Context(), dataset, r.URL.Query(), libraryFieldsFor(needed...))
+		var rows []map[string]any
+		var evidence map[string]*searchEvidence
+		var err error
+		if dataset == "library" {
+			search := librarySearch(r.Context(), r.URL.Query())
+			search.evidence = &evidence
+			rows, err = s.Catalog.searchRows(search, libraryFieldsFor(needed...))
+		} else {
+			rows, err = s.queryTableRows(r.Context(), dataset, r.URL.Query(), libraryFieldsFor(needed...))
+		}
 		if err != nil {
 			writeError(w, err, http.StatusInternalServerError)
 			return
@@ -236,6 +251,13 @@ func (s *Server) postQueryTable(w http.ResponseWriter, r *http.Request, dataset,
 			if result.Rows, err = s.Catalog.libraryPage(r.Context(), result.Rows); err != nil {
 				writeError(w, err, http.StatusInternalServerError)
 				return
+			}
+			// explain=1 adds each row's "why" (see explainLibraryRows).
+			if r.URL.Query().Get("explain") == "1" && len(evidence) > 0 {
+				if err := s.Catalog.explainLibraryRows(r.Context(), result.Rows, r.URL.Query().Get("search"), evidence); err != nil {
+					writeError(w, err, http.StatusInternalServerError)
+					return
+				}
 			}
 		}
 		writeJSON(w, result, http.StatusOK)

@@ -35,11 +35,11 @@ test('navigator restores routes, library search, view, and query filters', async
     await page.goto('http://navigator.test/library');
     await page.getByRole('button', { name: 'Navigation bar' }).click();
     assert.match(await page.locator('#navigatorURI').inputValue(), /\/library/);
-    await page.getByRole('searchbox', { name: 'Semantic and full-text search' }).fill('debugging');
+    await page.getByRole('searchbox', { name: 'Search text and related terms' }).fill('debugging');
     await page.getByRole('button', { name: 'Search library' }).and(page.getByText('Search library')).click();
     assert.equal(new URL(page.url()).searchParams.get('search'), 'debugging');
     await page.reload();
-    assert.equal(await page.getByRole('searchbox', { name: 'Semantic and full-text search' }).inputValue(), 'debugging');
+    assert.equal(await page.getByRole('searchbox', { name: 'Search text and related terms' }).inputValue(), 'debugging');
     await page.getByRole('button', { name: 'Conversations', exact: true }).click();
     await page.evaluate(() => window.alexandriaQueryTables.filterRepository('example/repo'));
     await page.waitForFunction(() => new URL(location.href).searchParams.has('q_library'));
