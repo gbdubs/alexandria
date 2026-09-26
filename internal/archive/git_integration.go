@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -34,44 +35,62 @@ func mainIntegration(repository, head, remote string) map[string]any {
 	if repository == "" || !gitCommitID.MatchString(head) {
 		return nil
 	}
-	git := func(args ...string) (string, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		output, err := exec.CommandContext(ctx, "git", append([]string{"-C", repository}, args...)...).Output()
-		return strings.TrimSpace(string(output)), err
-	}
-	if _, err := git("show-ref", "--verify", "--quiet", "refs/remotes/origin/main"); err != nil {
-		return nil
-	}
-	head, err := git("rev-parse", "--verify", head+"^{commit}")
+	tip, err := gitOutput(repository, "rev-parse", "--verify", "refs/remotes/origin/main^{commit}")
 	if err != nil {
 		return nil
 	}
-	if _, err := git("merge-base", "--is-ancestor", head, "refs/remotes/origin/main"); err != nil {
-		return nil
+	integration, _ := mainIntegrationAtTip(repository, head, remote, tip)
+	return integration
+}
+
+func gitOutput(repository string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, "git", append([]string{"-C", repository}, args...)...).Output()
+	return strings.TrimSpace(string(output)), err
+}
+
+// checked says Git determined ancestry conclusively. A nil integration with
+// checked=true can be cached; missing objects and failed commands cannot.
+func mainIntegrationAtTip(repository, head, remote, tip string) (map[string]any, bool) {
+	if !gitCommitID.MatchString(head) || !gitCommitID.MatchString(tip) {
+		return nil, false
 	}
-	lineage, err := git("rev-list", "--first-parent", "--reverse", "refs/remotes/origin/main")
+	head, err := gitOutput(repository, "rev-parse", "--verify", head+"^{commit}")
+	if err != nil {
+		return nil, false
+	}
+	if _, err := gitOutput(repository, "merge-base", "--is-ancestor", head, tip); err != nil {
+		if exit, ok := err.(*exec.ExitError); ok && exit.ExitCode() == 1 {
+			// A shallow boundary can make an ancestor appear absent without
+			// changing the remote tip when the checkout is later deepened.
+			shallow, err := gitOutput(repository, "rev-parse", "--is-shallow-repository")
+			return nil, err == nil && shallow == "false"
+		}
+		return nil, false
+	}
+	lineage, err := gitOutput(repository, "rev-list", "--first-parent", "--reverse", tip)
 	if err != nil || lineage == "" {
-		return nil
+		return nil, false
 	}
 	commits := strings.Split(lineage, "\n")
 	low, high := 0, len(commits)-1
 	for low < high {
 		middle := low + (high-low)/2
-		if _, err := git("merge-base", "--is-ancestor", head, commits[middle]); err == nil {
+		if _, err := gitOutput(repository, "merge-base", "--is-ancestor", head, commits[middle]); err == nil {
 			high = middle
 		} else {
 			low = middle + 1
 		}
 	}
 	commit := commits[low]
-	title, err := git("show", "-s", "--format=%s", commit)
+	title, err := gitOutput(repository, "show", "-s", "--format=%s", commit)
 	if err != nil {
-		return nil
+		return nil, false
 	}
-	parents, err := git("rev-list", "--parents", "-n", "1", commit)
+	parents, err := gitOutput(repository, "rev-list", "--parents", "-n", "1", commit)
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	method := "direct"
 	if len(strings.Fields(parents)) > 2 {
@@ -81,13 +100,15 @@ func mainIntegration(repository, head, remote string) map[string]any {
 	if slug := githubSlug(remote); slug != "" {
 		result["main_merge_url"] = "https://github.com/" + slug + "/commit/" + commit
 	}
-	return result
+	return result, true
 }
 
 // refreshMainIntegrations only runs Git in paths this host recorded. Another
 // Mac's path may not exist here, or may be an unrelated checkout: Conductor
 // reuses workspace directory names.
 func (c *Catalog) refreshMainIntegrations(ctx context.Context) error {
+	c.gitMainMu.Lock()
+	defer c.gitMainMu.Unlock()
 	rows, err := queryMaps(c.DB, `SELECT w.id,w.head_ref,r.canonical_remote,s.location,s.repository_locations_json
 		FROM workspaces w JOIN workspace_sightings s ON s.workspace_id=w.id AND s.host_id=?
 		LEFT JOIN repositories r ON r.id=w.repository_id
@@ -95,6 +116,17 @@ func (c *Catalog) refreshMainIntegrations(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	negativeRows, err := queryMaps(c.DB, `SELECT workspace_id,location,head_ref,main_tip FROM git_main_negative_lookups WHERE host_id=?`, currentHost().ID)
+	if err != nil {
+		return err
+	}
+	negative := make(map[string]map[string]any, len(negativeRows))
+	for _, row := range negativeRows {
+		negative[firstString(row["workspace_id"])+"\x00"+firstString(row["location"])] = row
+	}
+	// A workspace can have several local paths, but one path needs only one
+	// ref lookup in this pass even if several workspaces refer to it.
+	tips := map[string]string{}
 	for start := 0; start < len(rows); {
 		row := rows[start]
 		var locations []string
@@ -108,8 +140,35 @@ func (c *Catalog) refreshMainIntegrations(ctx context.Context) error {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			integration := mainIntegration(location, firstString(row["head_ref"]), firstString(row["canonical_remote"]))
+			if location == "" {
+				continue
+			}
+			tip, seen := tips[location]
+			if !seen {
+				if info, err := os.Stat(location); err == nil && info.IsDir() {
+					tip, _ = gitOutput(location, "rev-parse", "--verify", "refs/remotes/origin/main^{commit}")
+				}
+				tips[location] = tip
+			}
+			if tip == "" {
+				continue
+			}
+			head := firstString(row["head_ref"])
+			if cached := negative[firstString(row["id"])+"\x00"+location]; cached != nil &&
+				firstString(cached["head_ref"]) == head && firstString(cached["main_tip"]) == tip {
+				continue
+			}
+			integration, checked := mainIntegrationAtTip(location, head, firstString(row["canonical_remote"]), tip)
 			if integration == nil {
+				if checked {
+					if _, err := c.DB.Exec(`INSERT INTO git_main_negative_lookups(workspace_id,host_id,location,head_ref,main_tip,checked_at)
+						VALUES(?,?,?,?,?,?) ON CONFLICT(workspace_id,host_id,location) DO UPDATE SET
+						head_ref=excluded.head_ref,main_tip=excluded.main_tip,checked_at=excluded.checked_at`,
+						row["id"], currentHost().ID, location, head, tip, now()); err != nil {
+						return err
+					}
+					negative[firstString(row["id"])+"\x00"+location] = map[string]any{"head_ref": head, "main_tip": tip}
+				}
 				continue
 			}
 			_, err := c.DB.Exec(`UPDATE workspaces SET main_merge_commit=?,main_merge_title=?,main_merge_url=?,main_merge_method=? WHERE id=?`,

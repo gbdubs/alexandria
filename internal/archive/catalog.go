@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -23,6 +24,7 @@ type Catalog struct {
 	// saw and warmed; only the Library maintenance loop uses them.
 	quietVersion, warmVersion int64
 	tools                     toolLedgerState
+	gitMainMu                 sync.Mutex
 	// authorship tracks the human-authorship rebuild.
 	authorship authorshipState
 	wal        walBound
