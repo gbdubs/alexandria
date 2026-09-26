@@ -42,6 +42,14 @@ blog post: **[grady.dev/projects/pharos](https://grady.dev/projects/pharos)**.
 ### Requirements
 
 - macOS 14 or later
+
+Once a release is published, download the prebuilt universal app from
+[GitHub Releases](https://github.com/gbdubs/alexandria/releases). See
+[releases and updates](docs/releases-and-updates.md) to install it as a portable
+library without building from source.
+
+To build from source, you also need:
+
 - [Go](https://go.dev/dl/). `go.mod` pins Go 1.26, and an older `go` downloads it automatically.
 - Xcode Command Line Tools (`xcode-select --install`) for the Swift wrapper
 - Node.js and npm (optional; without them the checked-in frontend bundle is used)

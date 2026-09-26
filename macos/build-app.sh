@@ -8,6 +8,9 @@
 #   PHAROS_HARDENED_RUNTIME   Set to 0 to sign without the hardened runtime
 #                             (e.g. to attach a debugger). Default: 1.
 #   PHAROS_UNIVERSAL          Set to 1 to build arm64 + x86_64. Default: native.
+#   PHAROS_VERSION            Numeric major.minor.patch bundle version. Default: 0.2.0.
+#   PHAROS_CODESIGN_TIMESTAMP Set to 1 for a secure signing timestamp (required
+#                             for Developer ID notarization). Default: 0.
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 OUT=${1:-"$ROOT/dist"}
@@ -15,6 +18,14 @@ APP="$OUT/Pharos.app"
 BUNDLE_ID=local.ai-work-archive
 SERVICE_ID=local.ai-work-archive.service
 MACOS_MIN=14.0
+VERSION=${PHAROS_VERSION:-0.2.0}
+case "$VERSION" in
+    *[!0-9.]*|.*|*.|*..*) echo "PHAROS_VERSION must be major.minor.patch (numeric)." >&2; exit 2 ;;
+esac
+if ! printf '%s\n' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+    echo "PHAROS_VERSION must be major.minor.patch (numeric)." >&2
+    exit 2
+fi
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -102,7 +113,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <key>CFBundleDisplayName</key><string>Pharos</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.2.0</string>
+<key>CFBundleShortVersionString</key><string>$VERSION</string>
+<key>CFBundleVersion</key><string>$VERSION</string>
 <key>LSMinimumSystemVersion</key><string>$MACOS_MIN</string>
 </dict></plist>
 PLIST
@@ -118,7 +130,12 @@ if [ -z "$IDENTITY" ]; then
     echo "Note: PHAROS_CODESIGN_IDENTITY is unset, so Pharos is ad-hoc signed; that signature changes whenever the code does, so macOS may ask for privacy permissions again after a rebuild."
 fi
 # Positional parameters double as the codesign argument list.
-set -- --force --timestamp=none --sign "$IDENTITY"
+set -- --force --sign "$IDENTITY"
+case "${PHAROS_CODESIGN_TIMESTAMP:-0}" in
+    0) set -- "$@" --timestamp=none ;;
+    1) set -- "$@" --timestamp ;;
+    *) echo "PHAROS_CODESIGN_TIMESTAMP must be 0 or 1." >&2; exit 2 ;;
+esac
 # The hardened runtime needs no entitlements here: WebKit's JIT runs in Apple's
 # WebContent process, the Go service needs no JIT or unsigned memory, and
 # launching it with Process() is unrestricted. It blocks DYLD_* injection and

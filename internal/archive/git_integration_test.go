@@ -98,3 +98,90 @@ func TestMainIntegrationFindsMergeAndDirectHistory(t *testing.T) {
 		t.Fatalf("stored integration: %q %q, %v", storedCommit, storedTitle, err)
 	}
 }
+
+func TestMainIntegrationNegativeLookupCache(t *testing.T) {
+	useHost(t, "git-cache-host")
+	repo := t.TempDir()
+	git := func(args ...string) string {
+		t.Helper()
+		output, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, output)
+		}
+		return strings.TrimSpace(string(output))
+	}
+	git("init", "-b", "main")
+	git("config", "user.name", "Archive Test")
+	git("config", "user.email", "archive@example.com")
+	git("commit", "--allow-empty", "-m", "Base")
+	git("update-ref", "refs/remotes/origin/main", "HEAD")
+	git("checkout", "-b", "feature")
+	git("commit", "--allow-empty", "-m", "Feature")
+	head := git("rev-parse", "HEAD")
+
+	catalog, _ := testCatalog(t)
+	if _, err := catalog.DB.Exec(`INSERT INTO workspaces(id,source_kind,source_account,source_id,title,head_ref,indexed_at)
+		VALUES('work','conductor','local','source','Feature',?,?)`, head, now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := catalog.DB.Exec(`INSERT INTO workspace_sightings(workspace_id,host_id,source_name,location,first_seen_at,last_seen_at)
+		VALUES('work',?,'conductor',?,?,?)`, currentHost().ID, repo, now(), now()); err != nil {
+		t.Fatal(err)
+	}
+
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	trace := filepath.Join(t.TempDir(), "git-calls")
+	shimDir := t.TempDir()
+	shim := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$ALEXANDRIA_GIT_TRACE\"\nexec '" + strings.ReplaceAll(gitPath, "'", "'\\''") + "' \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(shimDir, "git"), []byte(shim), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ALEXANDRIA_GIT_TRACE", trace)
+	t.Setenv("PATH", shimDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	refresh := func() []string {
+		t.Helper()
+		if err := os.WriteFile(trace, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := catalog.refreshMainIntegrations(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		calls, err := os.ReadFile(trace)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.Split(strings.TrimSpace(string(calls)), "\n")
+	}
+	if calls := refresh(); len(calls) < 3 {
+		t.Fatalf("first negative scan made only %d Git calls: %v", len(calls), calls)
+	}
+	if calls := refresh(); len(calls) != 1 || !strings.Contains(calls[0], "rev-parse --verify refs/remotes/origin/main") {
+		t.Fatalf("unchanged tip should need only one ref lookup, got %v", calls)
+	}
+	git("checkout", "main")
+	git("commit", "--allow-empty", "-m", "More main work")
+	git("update-ref", "refs/remotes/origin/main", "HEAD")
+	if calls := refresh(); len(calls) < 3 {
+		t.Fatalf("advanced main tip did not repeat ancestry check: %v", calls)
+	}
+	git("checkout", "feature")
+	git("commit", "--allow-empty", "-m", "More feature work")
+	newHead := git("rev-parse", "HEAD")
+	if _, err := catalog.DB.Exec(`UPDATE workspaces SET head_ref=? WHERE id='work'`, newHead); err != nil {
+		t.Fatal(err)
+	}
+	if calls := refresh(); len(calls) < 3 {
+		t.Fatalf("changed workspace head did not repeat ancestry check: %v", calls)
+	}
+	git("checkout", "main")
+	git("merge", "--no-ff", "feature", "-m", "Merge feature")
+	git("update-ref", "refs/remotes/origin/main", "HEAD")
+	refresh()
+	var merged string
+	if err := catalog.DB.QueryRow(`SELECT main_merge_commit FROM workspaces WHERE id='work'`).Scan(&merged); err != nil || merged == "" {
+		t.Fatalf("merge after cached negatives was not recorded: %q, %v", merged, err)
+	}
+}

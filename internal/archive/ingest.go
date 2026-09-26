@@ -104,15 +104,23 @@ func (c *Catalog) IngestContext(ctx context.Context, adapter Adapter, progress P
 		result.Error = message
 		return result
 	}
+	// The source fingerprint guards the entire pass. A partial adapter's part
+	// version must participate too, or a new parsing/indexing step can be
+	// hidden by an unchanged source and never reach its per-part checks.
+	if partial, ok := adapter.(partialAdapter); ok {
+		fingerprint = hashBytes([]byte(partial.partExtractor() + ":" + fingerprint))
+	}
 	if view != nil && view.offHost() {
 		// Indexed without the host's Git checkouts at hand: the host's own sync
 		// must not take it as current (see partTracker).
 		fingerprint = "offhost:" + fingerprint
 	}
+	indexVersion := sourceIndexVersion(adapter)
 	var priorFingerprint, lastSuccess, priorError, coverage sql.NullString
+	var priorVersion sql.NullString
 	var pending int64
-	err = c.DB.QueryRow("SELECT fingerprint,last_success_at,error,pending_count,coverage FROM source_states WHERE host_id=? AND source_name=?", host.ID, config.Name).Scan(&priorFingerprint, &lastSuccess, &priorError, &pending, &coverage)
-	if err == nil && priorFingerprint.String == fingerprint && lastSuccess.Valid && !priorError.Valid && pending == 0 && coverage.String == "complete" {
+	err = c.DB.QueryRow("SELECT fingerprint,index_version,last_success_at,error,pending_count,coverage FROM source_states WHERE host_id=? AND source_name=?", host.ID, config.Name).Scan(&priorFingerprint, &priorVersion, &lastSuccess, &priorError, &pending, &coverage)
+	if err == nil && priorFingerprint.String == fingerprint && priorVersion.String == indexVersion && lastSuccess.Valid && !priorError.Valid && pending == 0 && coverage.String == "complete" {
 		state("complete", fingerprint, fingerprint, "", 0, true)
 		result.SkippedUnchanged = true
 		report("complete")
@@ -149,8 +157,28 @@ func (c *Catalog) IngestContext(ctx context.Context, adapter Adapter, progress P
 		}
 	}
 	state("complete", fingerprint, fingerprint, "", 0, true)
+	if _, err := c.DB.Exec("UPDATE source_states SET index_version=? WHERE host_id=? AND source_name=?", nilIfEmpty(indexVersion), host.ID, config.Name); err != nil {
+		result.Error = err.Error()
+		report("failed")
+		return result
+	}
 	report("complete")
 	return result
+}
+
+func sourceIndexVersion(adapter Adapter) string {
+	partial, ok := adapter.(partialAdapter)
+	if ok {
+		version := partial.partExtractor()
+		if view := captureViewOf(adapter); view != nil && view.offHost() {
+			version += "@offhost"
+		}
+		return version
+	}
+	if versioned, ok := adapter.(interface{ indexVersion() string }); ok {
+		return versioned.indexVersion()
+	}
+	return ""
 }
 
 // ingestPass ingests the records an adapter discovers, or for an incremental

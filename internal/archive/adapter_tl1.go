@@ -285,8 +285,10 @@ func (a *tl1Adapter) Fingerprint() (string, error) {
 		}
 	}
 	sort.Strings(rows)
-	return hashBytes([]byte("tl1-analysis-v1:" + strings.Join(rows, "\n"))), nil
+	return hashBytes([]byte(a.indexVersion() + ":" + strings.Join(rows, "\n"))), nil
 }
+
+func (a *tl1Adapter) indexVersion() string { return "tl1-analysis-v1" }
 
 func (a *tl1Adapter) Discover(emit func(WorkspaceRecord) error) error {
 	a.snapshots = nil

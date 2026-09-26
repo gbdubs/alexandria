@@ -9,8 +9,8 @@ import (
 )
 
 // Library search ranks each workspace by its best text match and its concept
-// similarity. A text match is a message holding every query word (word
-// search) or every query term as a substring (substring search); among the
+// similarity. A text match is a message holding every unquoted query word
+// (word search), a quoted phrase, or every unquoted term as a substring; among the
 // searchScan best-scoring of the recentMatches most recently indexed matching
 // messages, the workspace with the best message ranks first. Concept similarity is the cosine between the query's and the
 // workspace's concept vectors, counted above relatedThreshold.
@@ -35,8 +35,8 @@ type searchMatches struct {
 
 // searchEvidence is what put one workspace in a query's results.
 type searchEvidence struct {
-	text, substring searchMatches
-	related         float64
+	text, phrase, substring searchMatches
+	related                 float64
 }
 
 func (m searchMatches) value() float64 {
@@ -46,7 +46,9 @@ func (m searchMatches) value() float64 {
 	return 1 / float64(m.rank)
 }
 
-func (e *searchEvidence) lexical() float64 { return max(e.text.value(), e.substring.value()) }
+func (e *searchEvidence) lexical() float64 {
+	return max(e.text.value(), e.phrase.value(), e.substring.value())
+}
 
 func (e *searchEvidence) textWeight() float64 {
 	if e.related > 0 {
@@ -64,6 +66,9 @@ func (e *searchEvidence) matchTypes() []string {
 	if e.text.rank > 0 {
 		types = append(types, "text")
 	}
+	if e.phrase.rank > 0 {
+		types = append(types, "phrase")
+	}
 	if e.substring.rank > 0 {
 		types = append(types, "substring")
 	}
@@ -75,6 +80,7 @@ func (e *searchEvidence) matchTypes() []string {
 
 // searchEvidence finds the workspaces a query matches and why.
 func (c *Catalog) searchEvidence(ctx context.Context, options SearchOptions) (map[string]*searchEvidence, error) {
+	unquoted, phrases := libraryQuery(options.Query)
 	evidence := map[string]*searchEvidence{}
 	get := func(id string) *searchEvidence {
 		if evidence[id] == nil {
@@ -101,23 +107,35 @@ func (c *Catalog) searchEvidence(ctx context.Context, options SearchOptions) (ma
 		}
 		return nil
 	}
+	collectFTS := func(parsed string, pick func(*searchEvidence) *searchMatches) error {
+		return collect(`SELECT c.workspace_id,m.id message_id FROM
+			(SELECT message_id,rank FROM messages_fts WHERE messages_fts MATCH ?1 AND rowid>=COALESCE(
+				(SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?1 ORDER BY rowid DESC LIMIT 1 OFFSET ?3),0)
+			ORDER BY rank LIMIT ?2) f
+			JOIN messages m ON m.id=f.message_id JOIN conversations c ON c.id=m.conversation_id ORDER BY f.rank`,
+			[]any{parsed, searchScan, recentMatches - 1}, pick)
+	}
 	// FTS5 ranks the matches itself, and only the best searchScan are joined
 	// to their workspaces: joining every match first read a messages row per
 	// match, seconds for a common word. Ranking reads every match's length, so
 	// only the recentMatches most recently indexed are ranked, whose lengths
 	// are stored together: a word in more messages than that (a million hold
 	// "the") took up to seconds to rank, and says little about the work.
-	if parsed := ftsQuery(options.Query); parsed != "" {
-		if err := collect(`SELECT c.workspace_id,m.id message_id FROM
-			(SELECT message_id,rank FROM messages_fts WHERE messages_fts MATCH ?1 AND rowid>=COALESCE(
-				(SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?1 ORDER BY rowid DESC LIMIT 1 OFFSET ?3),0)
-			ORDER BY rank LIMIT ?2) f
-			JOIN messages m ON m.id=f.message_id JOIN conversations c ON c.id=m.conversation_id ORDER BY f.rank`,
-			[]any{parsed, searchScan, recentMatches - 1}, func(e *searchEvidence) *searchMatches { return &e.text }); err != nil {
+	wordQuery := unquoted
+	if len(phrases) == 0 {
+		wordQuery = options.Query
+	}
+	if parsed := ftsQuery(wordQuery); parsed != "" {
+		if err := collectFTS(parsed, func(e *searchEvidence) *searchMatches { return &e.text }); err != nil {
 			return nil, err
 		}
 	}
-	if terms, _ := substringTerms(options.Query); options.Substring && len(terms) > 0 {
+	if len(phrases) > 0 {
+		if err := collectFTS(libraryPhraseQuery(phrases), func(e *searchEvidence) *searchMatches { return &e.phrase }); err != nil {
+			return nil, err
+		}
+	}
+	if terms, _ := substringTerms(wordQuery); options.Substring && len(terms) > 0 {
 		if err := collect(`SELECT c.workspace_id,m.id message_id FROM
 			(SELECT rowid,rank FROM messages_trigram WHERE messages_trigram MATCH ?1 AND rowid>=COALESCE(
 				(SELECT rowid FROM messages_trigram WHERE messages_trigram MATCH ?1 ORDER BY rowid DESC LIMIT 1 OFFSET ?3),0)
@@ -128,28 +146,54 @@ func (c *Catalog) searchEvidence(ctx context.Context, options SearchOptions) (ma
 			return nil, err
 		}
 	}
-	scores, err := c.semanticMatches(ctx, options.Query, relatedThreshold, searchScan)
+	if len(phrases) > 0 {
+		for id, item := range evidence {
+			if item.phrase.rank == 0 {
+				delete(evidence, id)
+			}
+		}
+		if len(evidence) == 0 || strings.TrimSpace(wordQuery) == "" {
+			return evidence, nil
+		}
+	}
+	scores, err := c.semanticMatches(ctx, wordQuery, relatedThreshold, searchScan)
 	if err != nil {
 		// Word and substring matches stand without concept similarity.
+		filterPhraseAndWords(evidence, len(phrases) > 0)
 		return evidence, nil
 	}
 	for _, item := range scores {
-		get(item.id).related = item.score
+		if len(phrases) == 0 || evidence[item.id] != nil {
+			get(item.id).related = item.score
+		}
 	}
+	filterPhraseAndWords(evidence, len(phrases) > 0)
 	return evidence, nil
+}
+
+func filterPhraseAndWords(evidence map[string]*searchEvidence, hasPhrase bool) {
+	if !hasPhrase {
+		return
+	}
+	for id, item := range evidence {
+		if item.phrase.rank == 0 || item.text.rank == 0 && item.substring.rank == 0 && item.related == 0 {
+			delete(evidence, id)
+		}
+	}
 }
 
 // explainLibraryRows adds to each page row found by query a "why": the parts
 // of its score, the messages that matched with the matching text marked, and
 // which words and fields made it conceptually similar.
 func (c *Catalog) explainLibraryRows(ctx context.Context, rows []map[string]any, query string, evidence map[string]*searchEvidence) error {
+	unquoted, phrases := libraryQuery(query)
 	found := map[string]*searchEvidence{}
 	messageIDs := []any{}
 	for _, row := range rows {
 		id := firstString(row["id"])
 		if e := evidence[id]; e != nil {
 			found[id] = e
-			for _, messageID := range append(append([]string{}, e.text.messages...), e.substring.messages...) {
+			for _, messageID := range append(append(append([]string{}, e.text.messages...), e.phrase.messages...), e.substring.messages...) {
 				messageIDs = append(messageIDs, messageID)
 			}
 		}
@@ -157,9 +201,17 @@ func (c *Catalog) explainLibraryRows(ctx context.Context, rows []map[string]any,
 	if len(found) == 0 {
 		return nil
 	}
-	wordTerms := words.FindAllString(query, -1)
-	substrings, short := substringTerms(query)
+	wordTerms := words.FindAllString(unquoted, -1)
+	phraseTerms := []string{}
+	for _, phrase := range phrases {
+		phraseTerms = append(phraseTerms, words.FindAllString(phrase, -1)...)
+	}
+	substrings, short := substringTerms(unquoted)
 	wordSnippets, err := c.matchSnippets(ctx, messageIDs, wordTerms, true)
+	if err != nil {
+		return err
+	}
+	phraseSnippets, err := c.matchSnippets(ctx, messageIDs, phraseTerms, true)
 	if err != nil {
 		return err
 	}
@@ -194,17 +246,20 @@ func (c *Catalog) explainLibraryRows(ctx context.Context, rows []map[string]any,
 		if e.text.rank > 0 {
 			why["text"] = matchesWhy(e.text, wordTerms, nil, wordSnippets)
 		}
+		if e.phrase.rank > 0 {
+			why["phrase"] = matchesWhy(e.phrase, phrases, nil, phraseSnippets)
+		}
 		if e.substring.rank > 0 {
 			why["substring"] = matchesWhy(e.substring, substrings, short, substringSnippets)
 		}
 		if e.related > 0 {
 			stored := documents[firstString(row["id"])]
-			explanation := explainSemantic(query, stored.document)
+			explanation := explainSemantic(unquoted, stored.document)
 			// Ranking scored the float32 copy of the vector (semantic_vectors);
 			// the explanation splits the cosine of the full one.
 			cosine := e.related
 			if len(stored.vector) > 0 {
-				cosine = semanticCosine(semanticEmbed(query), stored.vector)
+				cosine = semanticCosine(semanticEmbed(unquoted), stored.vector)
 			}
 			why["related"] = map[string]any{"cosine": cosine, "threshold": relatedThreshold, "weight": relatedWeight,
 				"exact": stored.document.matches(stored.vector), "signal": explanation.Signal, "noise": explanation.Noise, "scattered": explanation.Scattered,

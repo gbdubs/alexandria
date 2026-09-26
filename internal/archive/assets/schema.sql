@@ -48,6 +48,19 @@ CREATE TABLE IF NOT EXISTS workspaces (
 CREATE INDEX IF NOT EXISTS workspaces_repo_idx ON workspaces(repository_id);
 CREATE INDEX IF NOT EXISTS workspaces_activity_idx ON workspaces(activity_at);
 
+-- A negative Git ancestry result is reusable only while the workspace head
+-- and the checkout's origin/main tip are unchanged. Paths are host-local.
+CREATE TABLE IF NOT EXISTS git_main_negative_lookups (
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  host_id TEXT NOT NULL,
+  location TEXT NOT NULL,
+  head_ref TEXT NOT NULL,
+  main_tip TEXT NOT NULL,
+  checked_at TEXT NOT NULL,
+  PRIMARY KEY(workspace_id,host_id,location)
+);
+CREATE INDEX IF NOT EXISTS git_main_negative_lookups_host_idx ON git_main_negative_lookups(host_id);
+
 CREATE TABLE IF NOT EXISTS work_items (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -704,6 +717,7 @@ CREATE TABLE IF NOT EXISTS source_states (
   capability TEXT NOT NULL,
   cursor TEXT,
   fingerprint TEXT,
+  index_version TEXT,
   coverage TEXT NOT NULL,
   last_attempt_at TEXT,
   last_success_at TEXT,

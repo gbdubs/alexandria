@@ -123,10 +123,11 @@ the same documents drive the React frontend and Go executor. Pharos uses a
 map-backed Go adapter because the upstream compiler currently emits PostgreSQL;
 the catalog remains SQLite and query values never become SQL text.
 
-Legacy Library query-table requests take `search=` (the search text), `substring=1` (also
-match inside words), and, on the rows request, `explain=1`, which adds each
-row's `why`: its score parts, its best matching messages with matched text
-marked, and its related-term breakdown.
+Legacy Library query-table requests use `search=` for text; quoted multi-word
+phrases require an ordered match in one message. `substring=1` also matches
+inside words, and the rows request accepts `explain=1` to add each row's `why`:
+its score parts, best matching messages with matched text, and related-term
+breakdown.
 
 Source controls only change ingestion participation or perform an explicit
 read-only refresh. They never delete source data.
@@ -190,6 +191,12 @@ embedded service (`local.ai-work-archive.service`), then the bundle
 | `PHAROS_CODESIGN_IDENTITY` | Keychain signing identity (name or SHA-1). Unset: ad-hoc signing. |
 | `PHAROS_HARDENED_RUNTIME=0` | Sign without the hardened runtime, for example to attach a debugger. |
 | `PHAROS_UNIVERSAL=1` | Build arm64 and x86_64 slices with `lipo` instead of the native architecture only. |
+| `PHAROS_VERSION` | Set both bundle version fields to a numeric `major.minor.patch`; defaults to `0.2.0` for local builds. |
+| `PHAROS_CODESIGN_TIMESTAMP=1` | Request a secure signing timestamp, required for Developer ID notarization. |
+
+The local [release workflow and proposed in-app update flow](releases-and-updates.md)
+use these settings to publish ad hoc signed versioned GitHub releases by
+default, with optional Developer ID signing and notarization.
 
 A stable identity matters when Pharos runs from an external drive. macOS asks
 before an app reads files on a removable volume and records the answer against

@@ -315,7 +315,7 @@
     actions.replaceChildren(button('Run in background', false, close));
     let run;
     try {
-      run = await runs.index({sources}, update => { if (update && shown()) rows.replaceChildren(indexRows(update)); });
+      run = await runs.index({sources, only_needed: true}, update => { if (update && shown()) rows.replaceChildren(indexRows(update)); });
     } catch (failure) {
       if (!shown()) return toast(failure.message);
       body.replaceChildren(node('p', 'pharos-error', failure.status === 409 ? 'Source indexing is already running. Index these captures from Settings → Sources once it finishes.' : `Indexing did not start: ${failure.message}`));
@@ -323,8 +323,12 @@
       return;
     }
     window.loadSources?.();
+    const alreadyCurrent = (run?.results || []).filter(result => result.skipped_unchanged).length;
+    const parsedParts = (run?.results || []).reduce((count, result) => count + (result.parsed || 0), 0);
+    const skippedParts = (run?.results || []).reduce((count, result) => count + (result.unchanged || 0), 0);
     const summary = run?.state === 'complete'
-      ? `Indexed ${plural(run.conversations, 'conversation')} (${plural(run.messages, 'message')}) from ${label}.`
+      ? !run.conversations && !parsedParts && !skippedParts && (alreadyCurrent || !run.results?.length) ? `${label} is already up to date; no conversations rewritten.`
+        : `Indexed ${plural(run.conversations, 'conversation')} (${plural(run.messages, 'message')}) from ${label}.${parsedParts ? ` ${plural(parsedParts, 'source part')} parsed.` : ''}${skippedParts ? ` ${skippedParts.toLocaleString()} unchanged files or sessions skipped.` : ''}`
       : run?.state === 'interrupted' ? `Indexing ${label} was interrupted; the next index resumes it.` : `Indexing ${label} finished with errors.`;
     if (!shown()) return toast(summary);
     setTitle(body, run?.state === 'complete' ? `${label} is in the library` : `Indexing ${label}`);
