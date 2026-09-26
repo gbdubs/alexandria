@@ -9,6 +9,8 @@ import (
 
 type chatGPTAdapter struct{ baseAdapter }
 
+func (a *chatGPTAdapter) indexVersion() string { return exportIndexVersion }
+
 func (a *chatGPTAdapter) exportFile() string {
 	info, err := os.Stat(a.config.Path)
 	if err == nil && info.IsDir() {
@@ -22,7 +24,7 @@ func (a *chatGPTAdapter) Fingerprint() (string, error) {
 		return "", fmt.Errorf("ChatGPT export is missing %s", file)
 	}
 	fingerprint, err := pathFingerprint(file, func(string, os.DirEntry) bool { return true })
-	return "token-events-v2:" + fingerprint, err
+	return a.indexVersion() + ":" + fingerprint, err
 }
 func (a *chatGPTAdapter) Discover(emit func(WorkspaceRecord) error) error {
 	file := a.exportFile()

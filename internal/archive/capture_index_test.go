@@ -293,6 +293,75 @@ func TestIngestParsesOnlyChangedFiles(t *testing.T) {
 	step("a new file", 1, 1)
 }
 
+type versionedJSONLAdapter struct {
+	*jsonlAdapter
+	version string
+}
+
+func (a *versionedJSONLAdapter) partExtractor() string { return a.version }
+
+func TestIngestRechecksPartsWhenIndexVersionChanges(t *testing.T) {
+	useHost(t, "host-a")
+	catalog, _ := testCatalog(t)
+	root := filepath.Join(t.TempDir(), "codex")
+	writeSourceFile(t, filepath.Join(root, "sessions", "rollout.jsonl"), codexLines("session-1", 1))
+	base, err := MakeAdapter(SourceConfig{Name: "codex", Kind: "codex", Path: root, Account: "local", Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter := &versionedJSONLAdapter{jsonlAdapter: base.(*jsonlAdapter), version: "index-step-1"}
+	parses := countParses(t)
+	first := catalog.Ingest(adapter, nil)
+	if first.Error != nil || first.Workspaces != 1 || parses.Load() != 1 {
+		t.Fatalf("first index: %+v, parses=%d", first, parses.Load())
+	}
+	second := catalog.Ingest(adapter, nil)
+	if second.Error != nil || !second.SkippedUnchanged || parses.Load() != 1 {
+		t.Fatalf("same version: %+v, parses=%d", second, parses.Load())
+	}
+	adapter.version = "index-step-2"
+	third := catalog.Ingest(adapter, nil)
+	if third.Error != nil || third.SkippedUnchanged || third.Parsed != 1 || parses.Load() != 2 {
+		t.Fatalf("new index step: %+v, parses=%d", third, parses.Load())
+	}
+	fourth := catalog.Ingest(adapter, nil)
+	if fourth.Error != nil || !fourth.SkippedUnchanged || parses.Load() != 2 {
+		t.Fatalf("new version settled: %+v, parses=%d", fourth, parses.Load())
+	}
+}
+
+func TestCaptureStatusIgnoresNoOpCaptureAndReportsIndexerUpdate(t *testing.T) {
+	useHost(t, "host-a")
+	catalog, config := testCatalog(t)
+	root := filepath.Join(t.TempDir(), "codex")
+	writeSourceFile(t, filepath.Join(root, "sessions", "rollout.jsonl"), codexLines("session-1", 1))
+	config.CaptureRoot = filepath.Join(t.TempDir(), "captures")
+	config.Sources = []SourceConfig{{Name: "codex", Kind: "codex", Path: root, Account: "local", Enabled: true}}
+	runCapture(t, config)
+	indexCaptures(t, catalog, config.CaptureRoot, "host-a")
+	status := func() map[string]any {
+		t.Helper()
+		hosts, err := catalog.capturedHosts(config.CaptureRoot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return hosts[0]["sources"].([]map[string]any)[0]
+	}
+	if source := status(); source["needs_index"] != false {
+		t.Fatalf("indexed source: %+v", source)
+	}
+	runCapture(t, config)
+	if source := status(); source["needs_index"] != false {
+		t.Fatalf("no-op capture: %+v", source)
+	}
+	if _, err := catalog.DB.Exec("UPDATE source_states SET index_version='older' WHERE host_id='host-a' AND source_name='codex'"); err != nil {
+		t.Fatal(err)
+	}
+	if source := status(); source["needs_index"] != true || source["index_reason"] != "indexer updated" {
+		t.Fatalf("indexer update: %+v", source)
+	}
+}
+
 func TestClaudeSessionIsParsedWithItsSubagents(t *testing.T) {
 	useHost(t, "host-a")
 	catalog, _ := testCatalog(t)
@@ -710,6 +779,24 @@ func TestIndexAPIRunsInBackground(t *testing.T) {
 		t.Fatal("the index kept the sync lock")
 	}
 	server.ingestMu.Unlock()
+	if code, body := call(http.MethodPost, `{"only_needed":true}`); code != http.StatusAccepted || body["run"] == nil {
+		t.Fatalf("start already-current index: %d %#v", code, body)
+	}
+	deadline = time.Now().Add(10 * time.Second)
+	for {
+		_, body := call(http.MethodGet, "")
+		run, _ := body["run"].(map[string]any)
+		if run["state"] == "complete" {
+			if run["total_sources"] != float64(0) || run["conversations"] != float64(0) {
+				t.Fatalf("already-current index did work: %#v", run)
+			}
+			break
+		}
+		if time.Now().After(deadline) || run["state"] == "failed" {
+			t.Fatalf("already-current index did not finish: %#v", body)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func TestIndexPassesOverWholeSourceCapturesOlderThanTheLastSync(t *testing.T) {

@@ -703,6 +703,7 @@ CREATE TABLE IF NOT EXISTS source_states (
   capability TEXT NOT NULL,
   cursor TEXT,
   fingerprint TEXT,
+  index_version TEXT,
   coverage TEXT NOT NULL,
   last_attempt_at TEXT,
   last_success_at TEXT,

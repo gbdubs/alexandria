@@ -96,7 +96,8 @@ func (c *Catalog) Close() error {
 // without rebuilding their ledger, whose version stamps would then pass the
 // stale rows as current; it records a TL1 source as synced without its
 // analysis tables; and it writes timestamps that no longer sort as times.
-const catalogSchemaVersion = 7
+// 8: source index versions make parser-only updates visible to capture status.
+const catalogSchemaVersion = 8
 
 // checkSchemaVersion refuses, before any migration runs, a catalog written by
 // a newer build.
@@ -141,6 +142,7 @@ func (c *Catalog) Initialize() error {
 		return err
 	}
 	for _, migration := range []struct{ table, column, statement string }{
+		{"source_states", "index_version", "ALTER TABLE source_states ADD COLUMN index_version TEXT"},
 		{"messages", "raw_text", "ALTER TABLE messages ADD COLUMN raw_text TEXT"},
 		{"messages", "source_order", "ALTER TABLE messages ADD COLUMN source_order INTEGER"},
 		{"messages", "model", "ALTER TABLE messages ADD COLUMN model TEXT"},

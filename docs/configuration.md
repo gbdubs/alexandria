@@ -697,9 +697,17 @@ shaped like sync runs (`kind` `capture-index`, `sources` labelled
 captured host's `id`, `label`, `user`, `current` (this Mac), and `sources[]` with
 `kind`, `captured_at`, `capture_finished`, `indexed_at`, `coverage`, `error` and
 `needs_index`. A release (before an eject) stops an index between records, and
-the next run resumes it. A running index, and the Git lookup that follows one
-that wrote records, make `safe_to_unplug` false. An index records the capturing
-Mac's source state only when it completes: a capture failing to index, perhaps
+the next run resumes it. The service also accepts `"only_needed": true` to
+limit a run to sources with new captured data, an incomplete prior index,
+snapshots awaiting an index, or a new indexer version; the Settings action uses
+this. A capture that copied no new data stays marked indexed. Within a selected
+source, unchanged transcript files and Conductor sessions are skipped. An
+indexer version change rechecks their parts. Run results distinguish
+conversations written, parts parsed, unchanged parts skipped, and whole
+sources already current. A running index, and the Git lookup that follows one
+that wrote records, make `safe_to_unplug` false. An index records the
+capturing Mac's source state only when it completes: a capture failing to
+index, perhaps
 on another Mac, leaves that Mac's own sync state as it was. In the app,
 onboarding offers **Index now** after its capture, and Settings → Sources
 indexes one Mac or all (see [Adding a Mac](#adding-a-mac)).

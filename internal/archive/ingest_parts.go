@@ -52,12 +52,9 @@ type partTracker struct {
 }
 
 func (c *Catalog) newPartTracker(host, source string, adapter partialAdapter, view *captureView) (*partTracker, error) {
-	extractor := adapter.partExtractor()
-	if view != nil && view.offHost() {
-		// Parsed without the host's Git checkouts, so the host's own sync must
-		// parse it again to fill in what only its checkouts know.
-		extractor += "@offhost"
-	}
+	// Parsed without the host's Git checkouts, so the host's own sync must
+	// parse it again to fill in what only its checkouts know.
+	extractor := sourceIndexVersion(adapter)
 	tracker := &partTracker{host: host, source: source, extractor: extractor, capture: view != nil, states: map[string]partState{}}
 	rows, err := c.DB.Query("SELECT item,extractor,size,version,COALESCE(signal,'') FROM source_item_states WHERE host_id=? AND source_name=?", host, source)
 	if err != nil {

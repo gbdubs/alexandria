@@ -469,10 +469,10 @@
     captureButton.id = 'pharosCaptureHost';
     captureButton.disabled = busy || !sources.enabled;
     const needing = captured.filter(host => host.sources.some(source => source.needs_index));
-    const indexAll = button('Index captured files', 'primary', () => startIndex({all_hosts: true}, 'captured files'));
+    const indexAll = button('Index captured files', 'primary', () => startIndex({all_hosts: true, only_needed: true}, 'captured files'));
     indexAll.id = 'pharosIndexAll';
     indexAll.disabled = busy || !needing.length;
-    indexAll.title = capture.active ? 'Capture is running; index after it finishes' : index.sync_active ? 'Source indexing is running' : needing.length ? `Index captures from ${needing.map(host => host.label).join(', ')}` : 'Everything captured is indexed';
+    indexAll.title = capture.active ? 'Capture is running; index after it finishes' : index.sync_active ? 'Source indexing is running' : needing.length ? `Index captures from ${needing.map(host => host.label).join(', ')}; unchanged files and sessions are skipped` : 'Everything captured is indexed';
     actions?.replaceChildren(captureButton, indexAll);
     renderHeaderAction();
     const activity = document.getElementById('sourceActivity');
@@ -501,7 +501,7 @@
         const captured = node('div', 'pharos-card-capture');
         captured.append(node('span', 'pharos-sub', 'Captured '), when(source.captured_at));
         if (source.captured_at && !source.capture_finished) captured.append(node('span', 'pharos-warn', ' · interrupted'));
-        captured.append(node('span', source.needs_index ? 'pharos-warn' : 'pharos-sub', source.needs_index ? ' · needs index' : ' · indexed'));
+        captured.append(node('span', source.needs_index ? 'pharos-warn' : 'pharos-sub', source.needs_index ? ` · needs index (${source.index_reason || 'new data'})` : ' · indexed'));
         card.append(head, path, facts, captured);
         if (source.error) card.append(node('div', 'sync-note badtext', source.error));
         grid.append(card);
@@ -511,6 +511,19 @@
 
   // Runs report progress by source; a lone source shows as work in progress.
   const runProgress = run => (run.total_sources > 1 ? run.completed_sources / run.total_sources : null);
+
+  function indexRunSummary(run) {
+    const results = run?.results || [];
+    const parsed = results.reduce((count, result) => count + (result.parsed || 0), 0);
+    const unchanged = results.reduce((count, result) => count + (result.unchanged || 0), 0);
+    const current = results.filter(result => result.skipped_unchanged).length;
+    if (!run?.conversations && !parsed && !unchanged && (current || !results.length)) return 'Already up to date; no conversations rewritten';
+    const parts = [plural(run?.conversations || 0, 'conversation') + ' written'];
+    if (parsed) parts.push(`${plural(parsed, 'source part')} parsed`);
+    if (unchanged) parts.push(`${unchanged.toLocaleString()} unchanged files/sessions skipped`);
+    if (current) parts.push(`${plural(current, 'source')} already current`);
+    return parts.join(' · ');
+  }
 
   function runLine(capture, index) {
     const box = node('div', 'pharos-run');
@@ -538,7 +551,7 @@
     if (recent.kind === 'capture') {
       box.append(node('span', failed ? 'pharos-error' : '', failed ? `The last capture ${recent.state === 'failed' ? 'finished with errors' : 'stopped'}: ${(recent.errors || []).map(error => error.error).slice(0, 2).join('; ') || 'see the sources below'}.` : `Captured ${size(recent.bytes_copied)} ${ago(recent.completed_at)}.`));
     } else {
-      box.append(node('span', failed ? 'pharos-error' : '', failed ? `The last index ${recent.state === 'interrupted' ? 'was interrupted; the next one resumes it' : `failed: ${recent.error || 'see the sources below'}`}.` : `Indexed ${plural(recent.conversations, 'conversation')} ${ago(recent.completed_at)}.`));
+      box.append(node('span', failed ? 'pharos-error' : '', failed ? `The last index ${recent.state === 'interrupted' ? 'was interrupted; the next one resumes it' : `failed: ${recent.error || 'see the sources below'}`}.` : `${indexRunSummary(recent)} ${ago(recent.completed_at)}.`));
     }
     return box;
   }
@@ -574,7 +587,7 @@
         hostsData.index = {...hostsData.index, run: update, active: update.state === 'running'};
         renderHosts();
       });
-      toast(run?.state === 'complete' ? `Indexed ${label}` : `Indexing ${label} ${run?.state === 'interrupted' ? 'was interrupted' : 'finished with errors'}`);
+      toast(run?.state === 'complete' ? indexRunSummary(run) : `Indexing ${label} ${run?.state === 'interrupted' ? 'was interrupted' : 'finished with errors'}`);
       window.loadSources?.();
     } catch (error) {
       hostsError = error.status === 409 ? 'Source indexing is already running; try again when it finishes.' : error.message;
@@ -597,7 +610,7 @@
       }
       const capture = await startCapture();
       if (capture?.state !== 'complete') return;
-      await startIndex({all_hosts: true}, 'captured files');
+      await startIndex({all_hosts: true, only_needed: true}, 'captured files');
     } catch (error) {
       toast(error.message);
     } finally {
@@ -626,7 +639,7 @@
         continue;
       }
       line.append(node('span', 'pharos-sub', 'Captured '), when(source.captured_at));
-      line.append(node('span', source.needs_index ? 'pharos-warn' : 'pharos-sub', source.needs_index ? ' · needs index' : ' · indexed'));
+      line.append(node('span', source.needs_index ? 'pharos-warn' : 'pharos-sub', source.needs_index ? ` · needs index (${source.index_reason || 'new data'})` : ' · indexed'));
     }
   }
 
