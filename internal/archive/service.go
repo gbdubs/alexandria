@@ -59,7 +59,7 @@ func (l *lifecycle) init() {
 // syncAdapter makes source adapters for syncs; tests replace it.
 var syncAdapter = MakeAdapter
 
-func (s *Server) cookieName() string { return fmt.Sprintf("aiwa_token_%d", s.Config().Port) }
+func (s *Server) cookieName() string { return fmt.Sprintf("pharos_token_%d", s.Config().Port) }
 
 // admit counts a request in, unless the service is stopping.
 func (s *Server) admit() bool {

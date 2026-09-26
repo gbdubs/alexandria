@@ -11,7 +11,7 @@
 # signature's DR is its cdhash, which changes whenever the code changes, so a
 # rebuilt Pharos can look like a new app. For a certificate that Apple did not
 # issue, codesign's default DR is
-#     identifier "local.ai-work-archive" and certificate leaf = H"<SHA-1 of the certificate>"
+#     identifier "local.pharos" and certificate leaf = H"<SHA-1 of the certificate>"
 # which stays the same across rebuilds for as long as you sign with this
 # certificate.
 #

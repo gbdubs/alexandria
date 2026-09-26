@@ -81,7 +81,7 @@ func legacyBackupFixture(t *testing.T, archiveRoot func(data string) string) (Co
 	if err != nil {
 		t.Fatal(err)
 	}
-	data := filepath.Join(root, "AI Work Archive")
+	data := filepath.Join(root, "Pharos")
 	config := defaultConfig(filepath.Join(data, "archive.toml"))
 	config.CatalogPath = filepath.Join(data, "catalog.sqlite3")
 	config.ArchiveRoot = archiveRoot(data)

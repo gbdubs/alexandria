@@ -4,9 +4,7 @@ Six exploratory directions for the app icon and header mark, drawn while the
 app was still called Alexandria. **Pharos was chosen** and the app took its
 name: the shipping icon source is [`macos/AppIcon.svg`](../../../macos/AppIcon.svg)
 (rebuild `AppIcon.icns` with `macos/make-icon.sh`), and the header mark is
-inlined in `src/ai_work_archive/ui.py`. Open
-[`preview.html`](preview.html) in a browser to see every concept at Dock and
-Finder sizes, plus the header lockup in light and dark themes.
+inlined in `internal/archive/assets/ui.py`.
 
 Each concept has two files:
 
@@ -27,7 +25,7 @@ Each concept has two files:
 | 5 | **Shelf Chart** | Book spines rising like a bar chart on graph paper: a library you can analyse. |
 | 6 | **Gilded Volume** | An evolution of today's "A" book mark: green leather, a gold-tooled A, and a ribbon. |
 
-The palette matches `src/ai_work_archive/ui.py`: accent `#315845`, deep accent
+The palette matches `internal/archive/assets/ui.py`: accent `#315845`, deep accent
 `#203f31`, gold `#ad823b`, panel `#fffaf0`, and background `#eee7d8`.
 Since Pharos shipped, the app header and dark theme take their colors from the
 icon itself: harbor green (`#2b5241` to `#10241b`), stone `#f3ebdc`, brass

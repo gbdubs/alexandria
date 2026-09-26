@@ -35,14 +35,14 @@ func newLegacyInstall(t *testing.T) legacyInstall {
 	}
 	legacy := legacyInstall{root: root, config: filepath.Join(root, "legacy", "archive.toml"),
 		catalog: filepath.Join(root, "legacy", "data", "catalog.sqlite3"), archive: filepath.Join(root, "legacy", "archive")}
-	projects := filepath.Join(root, "home", ".claude", "projects", "-Users-test-alexandria")
+	projects := filepath.Join(root, "home", ".claude", "projects", "-Users-test-pharos")
 	if err := os.MkdirAll(projects, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	for session := range 12 {
 		lines := []string{}
 		for message := range 8 {
-			lines = append(lines, fmt.Sprintf(`{"sessionId":"s%d","uuid":"s%d-m%d","type":"user","cwd":"/Users/test/alexandria","timestamp":"2026-09-%02dT00:%02d:00Z","message":{"content":"session%d message %d %s"}}`,
+			lines = append(lines, fmt.Sprintf(`{"sessionId":"s%d","uuid":"s%d-m%d","type":"user","cwd":"/Users/test/pharos","timestamp":"2026-09-%02dT00:%02d:00Z","message":{"content":"session%d message %d %s"}}`,
 				session, session, message, session+1, message, session, message, strings.Repeat("padding ", 50)))
 		}
 		if err := os.WriteFile(filepath.Join(projects, fmt.Sprintf("s%d.jsonl", session)), []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {

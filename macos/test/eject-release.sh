@@ -76,9 +76,9 @@ wait_exit() {
     PID=
 }
 
-echo "Building alexandria…"
-(cd "$ROOT" && GOTOOLCHAIN=local go build -o "$WORK/alexandria" ./cmd/alexandria)
-CLI="$WORK/alexandria"
+echo "Building pharos…"
+(cd "$ROOT" && GOTOOLCHAIN=local go build -o "$WORK/pharos" ./cmd/pharos)
+CLI="$WORK/pharos"
 
 # A canonical export large enough that a sync is still running a second in.
 python3 - "$WORK/export.json" <<'EOF'

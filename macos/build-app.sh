@@ -15,8 +15,8 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 OUT=${1:-"$ROOT/dist"}
 APP="$OUT/Pharos.app"
-BUNDLE_ID=local.ai-work-archive
-SERVICE_ID=local.ai-work-archive.service
+BUNDLE_ID=local.pharos
+SERVICE_ID=local.pharos.service
 MACOS_MIN=14.0
 VERSION=${PHAROS_VERSION:-0.2.0}
 case "$VERSION" in
@@ -29,15 +29,14 @@ fi
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+# A local rebuild can reuse dist/Pharos.app from before the CLI and wrapper
+# were renamed. Keep the bundle free of obsolete executables.
+rm -f "$APP/Contents/MacOS/alexandria" "$APP/Contents/MacOS/AIWorkArchive"
 mkdir -p "$ROOT/internal/archive/assets"
 mkdir -p "$ROOT/internal/archive/assets/query-schemas"
-# The embedded schema and UI are the source of truth now that the Python
-# reference in src/ is retired. While a checkout still has it, keep the two
-# byte-for-byte aligned.
+# The embedded schema and UI are the source of truth.
 for name in schema.sql ui.py; do
-    if [ -f "$ROOT/src/ai_work_archive/$name" ]; then
-        cp "$ROOT/src/ai_work_archive/$name" "$ROOT/internal/archive/assets/$name"
-    elif [ ! -f "$ROOT/internal/archive/assets/$name" ]; then
+    if [ ! -f "$ROOT/internal/archive/assets/$name" ]; then
         echo "internal/archive/assets/$name is missing." >&2
         exit 1
     fi
@@ -77,14 +76,14 @@ for goarch in $GOARCHES; do
     esac
     ARCHS="$ARCHS $arch"
     echo "Building the Go service ($arch)…"
-    (cd "$ROOT" && GOOS=darwin GOARCH="$goarch" CGO_ENABLED="$CGO" go build -o "$WORK/alexandria-$arch" ./cmd/alexandria)
+    (cd "$ROOT" && GOOS=darwin GOARCH="$goarch" CGO_ENABLED="$CGO" go build -o "$WORK/pharos-$arch" ./cmd/pharos)
     echo "Building the Swift wrapper ($arch)…"
     swiftc -parse-as-library -target "$arch-apple-macos$MACOS_MIN" -framework SwiftUI -framework WebKit \
         -framework DiskArbitration -framework Security \
-        "$ROOT/macos/AIWorkArchiveApp.swift" "$ROOT/macos/LibraryVolume.swift" "$ROOT/macos/RuntimeCache.swift" \
-        -o "$WORK/AIWorkArchive-$arch"
+        "$ROOT/macos/PharosApp.swift" "$ROOT/macos/LibraryVolume.swift" "$ROOT/macos/RuntimeCache.swift" \
+        -o "$WORK/PharosApp-$arch"
 done
-for name in alexandria AIWorkArchive; do
+for name in pharos PharosApp; do
     target="$APP/Contents/MacOS/$name"
     # Replace rather than overwrite in place, so a running copy keeps its
     # mapped executable.
@@ -107,7 +106,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleExecutable</key><string>AIWorkArchive</string>
+<key>CFBundleExecutable</key><string>PharosApp</string>
 <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
 <key>CFBundleName</key><string>Pharos</string>
 <key>CFBundleDisplayName</key><string>Pharos</string>
@@ -145,7 +144,7 @@ if [ "${PHAROS_HARDENED_RUNTIME:-1}" != 0 ]; then
     set -- "$@" --options runtime
 fi
 # Sign nested code first; the bundle seal records its signature.
-codesign "$@" --identifier "$SERVICE_ID" "$APP/Contents/MacOS/alexandria"
+codesign "$@" --identifier "$SERVICE_ID" "$APP/Contents/MacOS/pharos"
 codesign "$@" --identifier "$BUNDLE_ID" "$APP"
 if ! codesign --verify --strict --deep --verbose=2 "$APP"; then
     echo "Code signature verification failed for $APP" >&2

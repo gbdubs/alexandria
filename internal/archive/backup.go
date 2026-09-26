@@ -1238,13 +1238,13 @@ func runBackupCLI(config Config, args []string) error {
 			prune = true
 		default:
 			if strings.HasPrefix(arg, "-") {
-				return fmt.Errorf("unknown flag %s; usage: alexandria backup [--prune] DEST", arg)
+				return fmt.Errorf("unknown flag %s; usage: pharos backup [--prune] DEST", arg)
 			}
 			positional = append(positional, arg)
 		}
 	}
 	if len(positional) != 1 {
-		return errors.New("usage: alexandria backup [--prune] DEST")
+		return errors.New("usage: pharos backup [--prune] DEST")
 	}
 	// On the command line a relative DEST means the working directory.
 	dest := expandPath(positional[0])

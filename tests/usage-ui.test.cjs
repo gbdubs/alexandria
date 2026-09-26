@@ -7,7 +7,7 @@ const { pathToFileURL } = require('node:url');
 
 const root = path.resolve(__dirname, '..');
 const { chromium } = createRequire(path.join(root, '.context/browser-tests/package.json'))('playwright');
-const source = fs.readFileSync(['src/ai_work_archive/ui.py', 'internal/archive/assets/ui.py'].map(name => path.join(root, name)).find(file => fs.existsSync(file)), 'utf8');
+const source = fs.readFileSync(['src/pharos/ui.py', 'internal/archive/assets/ui.py'].map(name => path.join(root, name)).find(file => fs.existsSync(file)), 'utf8');
 const html = source.slice(source.indexOf("r'''") + 4, source.lastIndexOf("'''"));
 
 const day = offset => { const d = new Date(); d.setDate(d.getDate() - offset); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
@@ -63,7 +63,7 @@ test('Usage toggles between tokens and writing, remembers the choice, and charts
     assert.equal(await page.getByRole('group', { name: 'Usage view' }).getByRole('button', { name: 'Machine Tokens' }).getAttribute('aria-pressed'), 'true');
     assert.equal(await page.locator('.refresh-prices-notice').count(), 0);
     pricing = { ...pricing, unpriced_models: [{ model: 'new-model', provider: 'test', tokens: 50, first_day: day(1), last_day: day(1) }] };
-    await page.evaluate(() => window.dispatchEvent(new Event('alexandria:usage-refresh')));
+    await page.evaluate(() => window.dispatchEvent(new Event('pharos:usage-refresh')));
     await page.locator('.refresh-prices-notice').waitFor();
     assert.match(await page.locator('.refresh-prices-notice').innerText(), /A new model has no price definition/);
     assert.equal(await page.locator('.refresh-prices').evaluate(button => getComputedStyle(button).color), await page.locator('.refresh-prices-notice p').evaluate(blurb => getComputedStyle(blurb).color));

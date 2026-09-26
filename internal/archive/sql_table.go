@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"alexandria/internal/querytable"
+	"github.com/gbdubs/pharos/internal/querytable"
 	"modernc.org/sqlite"
 )
 

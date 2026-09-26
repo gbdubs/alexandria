@@ -59,7 +59,7 @@ type Config struct {
 
 func defaultConfig(path string) Config {
 	home, _ := os.UserHomeDir()
-	root := filepath.Join(home, "Library", "Application Support", "AI Work Archive")
+	root := filepath.Join(home, "Library", "Application Support", "Pharos")
 	return Config{
 		Path: path, CatalogPath: filepath.Join(root, "catalog.sqlite3"),
 		ArchiveRoot: filepath.Join(root, "preserved"), StagingRoot: filepath.Join(root, "staging"),
@@ -77,7 +77,7 @@ func LoadConfig(path string) (Config, error) { return loadConfig(path, true) }
 // for sources and must not wait for ioreg.
 func loadConfig(path string, hostSources bool) (Config, error) {
 	if path == "" {
-		path = os.Getenv("AIWA_CONFIG")
+		path = os.Getenv("PHAROS_CONFIG")
 	}
 	if path == "" {
 		path = libraryConfigBeside(runningExecutable())
@@ -152,7 +152,7 @@ func loadConfig(path string, hostSources bool) (Config, error) {
 	config.CaptureRoot = resolvePath(base, stringValue(root, "capture_root", captureRoot))
 	config.CaptureGenerations = intValue(root, "capture_snapshot_generations", config.CaptureGenerations)
 	config.VolumeID = stringValue(root, "volume_id", "")
-	config.APIToken = stringValue(root, "api_token", os.Getenv("AIWA_API_TOKEN"))
+	config.APIToken = stringValue(root, "api_token", os.Getenv("PHAROS_API_TOKEN"))
 	config.Executable = resolvePath(base, stringValue(root, "executable", ""))
 	config.Host = stringValue(root, "host", config.Host)
 	config.Port = intValue(root, "port", config.Port)
@@ -164,7 +164,7 @@ func loadConfig(path string, hostSources bool) (Config, error) {
 	config.EnableReclamation = boolValue(root, "enable_reclamation", false)
 	config.ReleaseHookProven = boolValue(root, "release_hook_proven", false)
 	config.TL1URL = stringValue(root, "tl1_url", "")
-	config.TL1Token = stringValue(root, "tl1_token", os.Getenv("AIWA_TL1_TOKEN"))
+	config.TL1Token = stringValue(root, "tl1_token", os.Getenv("PHAROS_TL1_TOKEN"))
 	config.GitHubToken = stringValue(root, "github_token", os.Getenv("GITHUB_TOKEN"))
 	config.CPUIDLECeiling = floatValue(root, "cpu_idle_ceiling", config.CPUIDLECeiling)
 	config.IOMBPSCeiling = floatValue(root, "io_mbps_ceiling", config.IOMBPSCeiling)
@@ -354,7 +354,7 @@ func SetSourceEnabled(path, name string, enabled bool) error {
 	if !found {
 		lines = append(lines[:end], append([]string{replacement}, lines[end:]...)...)
 	}
-	temporary := filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".alexandria.tmp")
+	temporary := filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".pharos.tmp")
 	if err := os.WriteFile(temporary, []byte(strings.Join(lines, "")), 0o600); err != nil {
 		return err
 	}
@@ -391,7 +391,7 @@ func SetRootString(path, key, value string) error {
 	} else {
 		lines = append(lines[:tableAt], append([]string{replacement}, lines[tableAt:]...)...)
 	}
-	temporary := filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".alexandria.tmp")
+	temporary := filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".pharos.tmp")
 	info, err := os.Stat(path)
 	if err != nil {
 		return err
@@ -413,9 +413,9 @@ func regexpAssignment(block, key string) string {
 }
 
 const exampleConfig = `# Pharos — all locations are opt-in; no home-directory scan is performed.
-data_dir = "~/Library/Application Support/AI Work Archive"
-archive_root = "/Volumes/euclid/Alexandria"
-# Set this from ` + "`alexandria volume-id /Volumes/euclid`" + ` to reject a wrong volume.
+data_dir = "~/Library/Application Support/Pharos"
+archive_root = "/Volumes/euclid/Pharos"
+# Set this from ` + "`pharos volume-id /Volumes/euclid`" + ` to reject a wrong volume.
 volume_id = ""
 host = "127.0.0.1"
 port = 8765

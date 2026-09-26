@@ -621,7 +621,7 @@ func adoptedSettings(legacy Config, top map[string]string) (string, []string) {
 	}
 	for _, secret := range []tomlAssignment{
 		{"tl1_url", "it names a hook on this Mac and serves only reclamation"},
-		{"tl1_token", "set AIWA_TL1_TOKEN for the service instead of storing it on the drive"},
+		{"tl1_token", "set PHAROS_TL1_TOKEN for the service instead of storing it on the drive"},
 		{"github_token", "set GITHUB_TOKEN for the service instead of storing it on the drive"},
 	} {
 		if _, ok := top[secret.key]; ok {
@@ -848,7 +848,7 @@ func syncDir(path string) {
 // is init-library with an existing catalog: the same library.toml, the same
 // refusal to overwrite one, and install-library.sh runs either.
 func runAdoptCLI(args []string) error {
-	usage := errors.New("usage: alexandria init-library DIR --adopt CONFIG [--full-check]")
+	usage := errors.New("usage: pharos init-library DIR --adopt CONFIG [--full-check]")
 	var dir, legacy string
 	full := false
 	for index := 0; index < len(args); index++ {
@@ -934,7 +934,7 @@ func printAdoptResult(w io.Writer, result AdoptResult) {
   1. %s
   2. Quit the old Pharos, which serves %s on port %d. Both apps share a bundle ID, so macOS may bring the running one forward instead of opening the library's.
   3. Open %s. It serves the library on port %d and resumes indexing this Mac's sources from where the copy left off.
-  4. Point MCP clients at %s instead of "--config %s mcp". Opening the app writes it, as does `+"`alexandria install-mcp`"+`.
+  4. Point MCP clients at %s instead of "--config %s mcp". Opening the app writes it, as does `+"`pharos install-mcp`"+`.
   5. Keep the old install as a fallback until satisfied; it no longer receives anything new. To remove it later, delete %s and its -wal/-shm files.
 `, build, legacy.Path, legacy.Port, app, config.Port, mcpLauncherPath(pharosSupportDir()), legacy.Path, legacy.CatalogPath)
 }

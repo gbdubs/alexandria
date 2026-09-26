@@ -225,7 +225,7 @@ func (s *Server) libraryActivities() []libraryActivity {
 	}
 	if !serviceCapture && s.captureActive() {
 		activities = append(activities, libraryActivity{Kind: "capture-other", Label: "Capture by another process",
-			Detail: "Another process on this Mac, such as alexandria capture, is capturing into the library.", Writes: true,
+			Detail: "Another process on this Mac, such as pharos capture, is capturing into the library.", Writes: true,
 			OnEject: "Pharos cannot stop it: wait for it to finish, or stop it, before ejecting; until then it keeps the drive busy."})
 	}
 	if active, runs := s.backups.status(); active && len(runs) > 0 {

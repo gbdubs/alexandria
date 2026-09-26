@@ -1,22 +1,22 @@
 # Configuration
 
-The default file is `archive.toml`; override it with `--config` or `AIWA_CONFIG`. Paths may use `~`.
+The default file is `archive.toml`; override it with `--config` or `PHAROS_CONFIG`. Paths may use `~`.
 Relative paths (`data_dir`, `catalog_path`, `archive_root`, `staging_root`,
 `executable`, and source `path`s) resolve against the directory containing the
 configuration file, not the working directory. `~` and absolute paths are used
 as written.
 
 ```toml
-data_dir = "~/Library/Application Support/AI Work Archive"
-catalog_path = "~/Library/Application Support/AI Work Archive/catalog.sqlite3"
-staging_root = "~/Library/Application Support/AI Work Archive/staging"
+data_dir = "~/Library/Application Support/Pharos"
+catalog_path = "~/Library/Application Support/Pharos/catalog.sqlite3"
+staging_root = "~/Library/Application Support/Pharos/staging"
 staging_cap_bytes = 2000000000
-archive_root = "/Volumes/euclid/Alexandria"
+archive_root = "/Volumes/euclid/Pharos"
 volume_id = "uuid:PASTE-THE-REPORTED-UUID"
 api_token = "a-long-random-local-token"
 # Used only by the optional Finder-launched macOS wrapper.
 # `launch.sh` maintains this automatically for the packaged Go service.
-# executable = "/absolute/path/to/Pharos.app/Contents/MacOS/alexandria"
+# executable = "/absolute/path/to/Pharos.app/Contents/MacOS/pharos"
 host = "127.0.0.1"
 port = 8765
 
@@ -27,7 +27,7 @@ io_mbps_ceiling = 25.0
 yield_poll_seconds = 2.0
 
 # tl1_url = "http://127.0.0.1:8781/archive/v1"
-# Prefer AIWA_TL1_TOKEN rather than storing this value.
+# Prefer PHAROS_TL1_TOKEN rather than storing this value.
 # tl1_token = "..."
 # Prefer GITHUB_TOKEN. GitHub enrichment sends only repo/PR identifiers.
 # github_token = "..."
@@ -74,7 +74,7 @@ macos/install-library.sh /Volumes/euclid/Pharos
 ```
 
 The script builds `Pharos.app` into the directory and runs
-`alexandria init-library DIR` there unless `library.toml` already exists. A
+`pharos init-library DIR` there unless `library.toml` already exists. A
 rerun replaces only the app; the configuration and catalog are left alone. It
 refuses while any process from that app bundle is running (the app, its service,
 or an MCP server an agent client started), because replacing a running
@@ -90,16 +90,17 @@ catalog, `preserved/`, and `staging/`, and writes a configuration with:
 - `catalog_path = "catalog/catalog.sqlite3"`, `archive_root = "preserved"`, and
   `staging_root = "staging"`, all relative;
 - `volume_id` pinned to the volume holding the directory (see
-  `alexandria volume-id DIR`);
+  `pharos volume-id DIR`);
 - a new random `api_token`, `host = "127.0.0.1"`, and `port = 8766`, which
   leaves the default 8765 to a per-user install so both can run on one Mac;
 - reclamation disabled, and no sources.
 
 **Discovery.** The app uses `library.toml` beside `Pharos.app` when it exists
-(running from a copy on the Mac, see below) and otherwise the per-user `~/Library/Application Support/AI Work
-Archive/archive.toml`. The bundled CLI does the same when neither `--config` nor
-`AIWA_CONFIG` is given (also through a symlink to it), so
-`/Volumes/euclid/Pharos/Pharos.app/Contents/MacOS/alexandria ingest` needs no
+(running from a copy on the Mac, see below) and otherwise the per-user
+`~/Library/Application Support/Pharos/archive.toml`. The bundled CLI does the
+same when neither `--config` nor `PHAROS_CONFIG` is given (also through a symlink
+to it), so
+`/Volumes/euclid/Pharos/Pharos.app/Contents/MacOS/pharos ingest` needs no
 flags. Any other executable still defaults to `./archive.toml`.
 
 **Guards.** Before a library's catalog is opened, every command (`serve`,
@@ -135,16 +136,16 @@ rather than treated as empty.
 ## Moving an existing install onto a drive
 
 A per-user install (`archive.toml` with its catalog beside it, normally in
-`~/Library/Application Support/AI Work Archive`) becomes a portable library
+`~/Library/Application Support/Pharos`) becomes a portable library
 without re-indexing:
 
 ```sh
 macos/install-library.sh /Volumes/euclid/Pharos \
-    --adopt "$HOME/Library/Application Support/AI Work Archive/archive.toml"
+    --adopt "$HOME/Library/Application Support/Pharos/archive.toml"
 ```
 
 The script builds `Pharos.app` into the directory and then runs
-`alexandria init-library DIR --adopt CONFIG` where it would otherwise run
+`pharos init-library DIR --adopt CONFIG` where it would otherwise run
 `init-library DIR`. The command also runs on its own; `install-library.sh DIR`
 later adds the app and keeps the adopted `library.toml`. Adopting is
 `init-library` with an existing catalog, hence the same command: the same
@@ -213,7 +214,7 @@ carry over, and the summary lists what was set:
 - `enable_reclamation` and `release_hook_proven` stay `false`: reclamation has
   to be proven again against the library's archive;
 - `tl1_url` names a hook on this Mac, and `tl1_token` and `github_token` are
-  secrets that should not travel on a drive; set `AIWA_TL1_TOKEN` and
+  secrets that should not travel on a drive; set `PHAROS_TL1_TOKEN` and
   `GITHUB_TOKEN` for the service instead.
 
 **If it fails.** An error or Ctrl-C removes everything the attempt created:
@@ -252,23 +253,23 @@ adopting avoids that.
 **For the per-user install on this Mac and the drive `euclid`:**
 
 ```sh
-cd path/to/alexandria   # this repository
+cd path/to/pharos   # this repository
 # 1. Adopt. The old Pharos may keep running meanwhile.
 macos/install-library.sh /Volumes/euclid/Pharos \
-    --adopt "$HOME/Library/Application Support/AI Work Archive/archive.toml"
+    --adopt "$HOME/Library/Application Support/Pharos/archive.toml"
 # 2. Quit the old Pharos (both apps share a bundle ID, so macOS may otherwise
 #    bring it forward instead). Its service, and MCP servers agent clients
 #    started with its configuration, show up here until they stop:
-pgrep -fl 'AI Work Archive/archive.toml|dist/Pharos.app' || echo "old Pharos stopped"
+pgrep -fl 'Pharos/archive.toml|dist/Pharos.app' || echo "old Pharos stopped"
 # 3. Open the library's app. It runs from a local copy, serves the library on
 #    port 8766, and resumes indexing this Mac's sources where the copy left off.
 open /Volumes/euclid/Pharos/Pharos.app
 ```
 
 4. In each agent client's MCP settings, replace the command of the Pharos
-   server (`…/alexandria --config …/archive.toml mcp`) with
+   server (`…/pharos --config …/archive.toml mcp`) with
    `~/Library/Application Support/Pharos/bin/pharos-mcp`, without arguments.
-   The app writes that launcher when it starts, and `alexandria install-mcp`
+   The app writes that launcher when it starts, and `pharos install-mcp`
    writes it on demand (see [MCP access](#mcp-access)).
 
 **The old install afterwards.** Keep it as a fallback until the library has
@@ -278,7 +279,7 @@ separate catalogs. To fall back, quit the library's app and start the old one
 (for example with `launch.sh`); it catches up from the sources on its next sync,
 for whatever they still hold (Claude Code deletes transcripts after 30 days by
 default). To remove it, delete `catalog.sqlite3` and its `-wal`/`-shm` in
-`~/Library/Application Support/AI Work Archive`, which is nearly all its space,
+`~/Library/Application Support/Pharos`, which is nearly all its space,
 then the rest of that folder, `archive_root`'s original if it was copied into
 `preserved/`, and any LaunchAgents installed from `macos/launchd` with its
 configuration.
@@ -290,7 +291,7 @@ Plug the drive in and double-click **Add This Mac.command** beside `Pharos.app`
 removable volume). The same step from Terminal is:
 
 ```sh
-/Volumes/euclid/Pharos/Pharos.app/Contents/MacOS/alexandria add-this-mac
+/Volumes/euclid/Pharos/Pharos.app/Contents/MacOS/pharos add-this-mac
 ```
 
 It lists the conversation sources it finds on this Mac (below), asks before
@@ -388,10 +389,10 @@ a message says when it finishes.
 Probing from the command line:
 
 ```sh
-alexandria probe                              # JSON report; changes nothing
-alexandria probe --accept claude,codex        # add candidates by suggested name
-alexandria probe --accept claude=claude-mbp   # ...under another source name
-alexandria probe --accept-all                 # add every recommended candidate
+pharos probe                              # JSON report; changes nothing
+pharos probe --accept claude,codex        # add candidates by suggested name
+pharos probe --accept claude=claude-mbp   # ...under another source name
+pharos probe --accept-all                 # add every recommended candidate
 ```
 
 The API equivalents are `GET /api/probe/status` (cheap; includes
@@ -434,7 +435,7 @@ rebuilds. The window shows "Opening Pharos from euclid…" while this happens.
 - `library.json` holds `library_dir` (the directory with `library.toml`),
   `volume_uuid` (without the `uuid:` prefix), `volume_name`, and `updated_at`
   (RFC 3339). Other tools, such as an MCP launcher, run
-  `runtime/current/Contents/MacOS/alexandria` against that library.
+  `runtime/current/Contents/MacOS/pharos` against that library.
 - Opening the local copy directly (from the Dock, say) opens the library in
   `library.json`, waiting for its drive if it is not connected.
 - If a local copy of another build is already running (the drive's app was
@@ -477,8 +478,8 @@ release, within 7 seconds (a second signal exits at once); the app sends
 SIGTERM when it quits.
 
 **Two services on one Mac.** Cookies ignore ports, so each service names its
-login cookie `aiwa_token_<port>`; a per-user install on 8765 and a library on
-8766 no longer sign each other out. Port 8765 also accepts the old `aiwa_token`.
+login cookie `pharos_token_<port>`; a per-user install on 8765 and a library on
+8766 do not sign each other out.
 
 **Tests.** `macos/test/eject-release.sh` exercises the service (release during a
 sync, eject, a forced detach while syncing, catalog integrity afterwards), and
@@ -506,7 +507,7 @@ progress is, and the next run redoes it.
   cannot be estimated), `started_at`, `writes` (whether it writes to the drive),
   and `on_eject` (what a release does to it). Kinds: `sync` and `index` (runs),
   `capture` (by the service), `capture-other` (another process on this Mac,
-  such as `alexandria capture`, holds the capture lock; Pharos cannot stop it,
+  such as `pharos capture`, holds the capture lock; Pharos cannot stop it,
   and it keeps the drive busy), `backup` (reads the library, writes elsewhere),
   `git` (the main-branch merge lookup that follows a sync or an index, or the
   first scan of a catalog), and `maintenance` (Library view rows still to be
@@ -542,7 +543,7 @@ resumes on its next run) and asks to confirm. What happens next:
 In a plain browser there is no app to ask, so the panel says to eject the drive
 in Finder (⏏ beside it in the sidebar) or with `diskutil eject`, with the
 command to copy. The Pharos app releases the library for either; a service run
-without the app (`alexandria serve`) has to be stopped first.
+without the app (`pharos serve`) has to be stopped first.
 
 ## Capture
 
@@ -554,8 +555,8 @@ the tools themselves delete (Claude Code removes transcripts after
 `cleanupPeriodDays`, 30 by default): a captured file is never deleted.
 
 ```sh
-alexandria capture              # every enabled source of this Mac
-alexandria capture claude codex # just these (a named source is captured even if disabled)
+pharos capture              # every enabled source of this Mac
+pharos capture claude codex # just these (a named source is captured even if disabled)
 ```
 
 The command prints a JSON summary, exits non-zero if anything failed, and never
@@ -677,9 +678,9 @@ whether or not the Mac that captured them is attached. It never reads the
 original source paths.
 
 ```sh
-alexandria index                        # this Mac's captures
-alexandria index --host host_… claude   # another Mac's, just its claude source
-alexandria index --all-hosts            # every captured Mac
+pharos index                        # this Mac's captures
+pharos index --host host_… claude   # another Mac's, just its claude source
+pharos index --all-hosts            # every captured Mac
 ```
 
 The command prints a JSON summary (per source: `host`, `source`, `workspaces`,
@@ -809,7 +810,7 @@ in its latest version only; earlier versions stay in `history/`.
 ## Keeping the library safe
 
 The library drive holds every archived conversation, including any secrets
-pasted into them, and it may be the only copy. `alexandria doctor` and
+pasted into them, and it may be the only copy. `pharos doctor` and
 `GET /api/health` (under `drive`) check the drive holding the library, or for a
 per-user `archive.toml` the drive holding `archive_root`, and say what to do
 about each problem. Pharos never runs the commands it recommends: they need an
@@ -822,8 +823,8 @@ administrator password or change the drive, so they are yours to run.
 | `filesystem` | the volume is not APFS | HFS+: after a backup, Disk Utility → Edit → Convert to APFS…, which keeps the data. exFAT or FAT cannot be encrypted and has no journal: move the library to an APFS volume (reformatting erases the drive). Network volumes are not safe for SQLite. |
 | `location` | (`info`) the library is on the internal disk or on a disk image | |
 | `free_space` | less than 1 GB is free (captures stop), less is free than the library already uses, or, at the growth rate seen across recorded backups, the drive fills within 90 days (30: `problem`) | Free up space or move to a larger drive. |
-| `volume_pin` | `library.toml` has no `volume_id`, or pins another volume | Set `volume_id` to what `alexandria volume-id DIR` prints. |
-| `backup` | no backup is recorded, or the last is more than 7 days old | `alexandria backup DEST`, below. |
+| `volume_pin` | `library.toml` has no `volume_id`, or pins another volume | Set `volume_id` to what `pharos volume-id DIR` prints. |
+| `backup` | no backup is recorded, or the last is more than 7 days old | `pharos backup DEST`, below. |
 
 Each check has an `id`, a `status` (`ok`, `info`, `unknown`, `warning` or
 `problem`), a `summary` and, where there is something to do, a
@@ -861,8 +862,8 @@ the drive and competes with captures for I/O.
 ### Backups
 
 ```sh
-alexandria backup "/Volumes/Other Drive/Pharos Backup"
-alexandria backup --prune "/Volumes/Other Drive/Pharos Backup"
+pharos backup "/Volumes/Other Drive/Pharos Backup"
+pharos backup --prune "/Volumes/Other Drive/Pharos Backup"
 ```
 
 A backup mirrors the library into a folder on another drive:
@@ -989,7 +990,7 @@ of gigabytes is therefore copied in minutes whenever it has changed.
 
 **Restoring.** Copy the backup folder to a drive, install the app into it
 (`macos/install-library.sh DIR` keeps the existing `library.toml`), and set
-`volume_id` in `library.toml` to what `alexandria volume-id DIR` prints: until
+`volume_id` in `library.toml` to what `pharos volume-id DIR` prints: until
 then the guard refuses to open the copy, as it should for any copy of a library.
 Set `github_token` or `tl1_token` again if you used them. `pharos-backup.json`
 can be deleted. The restored library gets a new `library_id` on its first
@@ -1031,7 +1032,7 @@ The library guards above run before such an open, and a missing catalog is
 never created. The volume check takes about 0.1 s, so it is skipped while the
 library directory is the one on the same device that last passed it.
 
-**Library not connected.** `alexandria mcp` starts and keeps running while the
+**Library not connected.** `pharos mcp` starts and keeps running while the
 library is unavailable. `initialize` and `tools/list` still answer, and tool
 calls fail with an error such as `Pharos library is not connected:
 /Volumes/euclid is not mounted`. The first call after the drive is back
@@ -1049,11 +1050,11 @@ rather than reopening the catalog while the drive unmounts.
 **Launcher.** A process running a binary from the library drive would keep the
 drive from ejecting and die when it is unplugged. So for a portable library the
 MCP command is `~/Library/Application Support/Pharos/bin/pharos-mcp`, run with no
-arguments. The service writes it when it starts, and `alexandria install-mcp`
+arguments. The service writes it when it starts, and `pharos install-mcp`
 writes it on demand. It runs
 
 ```sh
-~/Library/Application Support/Pharos/runtime/current/Contents/MacOS/alexandria mcp \
+~/Library/Application Support/Pharos/runtime/current/Contents/MacOS/pharos mcp \
   --library-json ~/Library/Application Support/Pharos/library.json
 ```
 

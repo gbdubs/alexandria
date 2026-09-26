@@ -1,4 +1,4 @@
-module alexandria
+module github.com/gbdubs/pharos
 
 go 1.26.0
 

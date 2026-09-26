@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"alexandria/internal/querytable"
+	"github.com/gbdubs/pharos/internal/querytable"
 	"modernc.org/sqlite"
 )
 

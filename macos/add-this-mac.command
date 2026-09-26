@@ -5,7 +5,7 @@
 # drive, and indexes it. Run it again any time to bring the library up to date.
 # macOS may first ask to let Terminal use files on a removable volume.
 DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-"$DIR/Pharos.app/Contents/MacOS/alexandria" --config "$DIR/library.toml" add-this-mac "$@"
+"$DIR/Pharos.app/Contents/MacOS/pharos" --config "$DIR/library.toml" add-this-mac "$@"
 status=$?
 echo
 if [ "$status" -eq 0 ]; then

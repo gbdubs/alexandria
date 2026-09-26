@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"alexandria/internal/querytable"
+	"github.com/gbdubs/pharos/internal/querytable"
 )
 
 func TestSQLArrayIncludesCaseSensitivity(t *testing.T) {

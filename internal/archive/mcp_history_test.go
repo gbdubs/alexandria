@@ -13,7 +13,7 @@ func TestMCPControlAndCallHistory(t *testing.T) {
 		t.Fatal("message continuation was not classified as truncated output")
 	}
 	catalog, config := testCatalog(t)
-	config.Executable = "/Applications/Alexandria.app/Contents/MacOS/alexandria"
+	config.Executable = "/Applications/Pharos.app/Contents/MacOS/pharos"
 	server := NewServer(config, catalog)
 	get := func(path string) *httptest.ResponseRecorder {
 		t.Helper()

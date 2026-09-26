@@ -201,7 +201,7 @@ func TestAuthCookieIsPerPort(t *testing.T) {
 	login := httptest.NewRecorder()
 	server.ServeHTTP(login, httptest.NewRequest(http.MethodGet, "/?token=test-token", nil))
 	cookies := login.Result().Cookies()
-	if len(cookies) != 1 || cookies[0].Name != "aiwa_token_8766" {
+	if len(cookies) != 1 || cookies[0].Name != "pharos_token_8766" {
 		t.Fatalf("login cookies %v", cookies)
 	}
 	check := func(server *Server, name string, want int) {
@@ -214,11 +214,11 @@ func TestAuthCookieIsPerPort(t *testing.T) {
 			t.Fatalf("cookie %s: %d, want %d", name, response.Code, want)
 		}
 	}
-	check(server, "aiwa_token_8766", http.StatusOK)
-	check(server, "aiwa_token_8765", http.StatusUnauthorized)
-	check(server, "aiwa_token", http.StatusUnauthorized)
+	check(server, "pharos_token_8766", http.StatusOK)
+	check(server, "pharos_token_8765", http.StatusUnauthorized)
+	check(server, "pharos_token", http.StatusUnauthorized)
 	config.Port = 8765
-	check(NewServer(config, catalog), "aiwa_token", http.StatusOK)
+	check(NewServer(config, catalog), "pharos_token_8765", http.StatusOK)
 }
 
 func TestServeRecordsTheLibraryOnlyOnceItHasItsPort(t *testing.T) {

@@ -3,7 +3,7 @@
 #
 #   tools/mcp-eject-test.sh
 #
-# It builds alexandria, installs it as the local runtime in a temporary
+# It builds pharos, installs it as the local runtime in a temporary
 # PHAROS_SUPPORT_DIR, creates a library on a new 300 MB APFS disk image, and
 # starts one MCP server through the pharos-mcp launcher. It then checks that:
 #
@@ -48,12 +48,12 @@ pass() { echo "ok: $*"; }
 [ "$(uname)" = Darwin ] || fail "needs macOS"
 [ ! -e "$volume" ] || fail "$volume already exists"
 
-echo "building alexandria"
+echo "building pharos"
 support="$work/support"
 app="$support/runtime/build-1/Pharos.app"
-bin="$app/Contents/MacOS/alexandria"
+bin="$app/Contents/MacOS/pharos"
 mkdir -p "$(dirname "$bin")"
-(cd "$root" && GOTOOLCHAIN=local go build -o "$bin" ./cmd/alexandria)
+(cd "$root" && GOTOOLCHAIN=local go build -o "$bin" ./cmd/pharos)
 ln -s build-1/Pharos.app "$support/runtime/current"
 export PHAROS_SUPPORT_DIR="$support"
 port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')

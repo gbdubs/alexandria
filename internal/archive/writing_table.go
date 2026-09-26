@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"alexandria/internal/querytable"
+	"github.com/gbdubs/pharos/internal/querytable"
 )
 
 // The Usage page's writing view lists one row per Library work with the

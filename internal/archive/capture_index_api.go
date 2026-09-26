@@ -15,7 +15,7 @@ import (
 
 const indexRunKind = "capture-index"
 
-// runIndexCLI: alexandria index [--host ID | --all-hosts] [SOURCE ...]
+// runIndexCLI: pharos index [--host ID | --all-hosts] [SOURCE ...]
 func runIndexCLI(config Config, catalog *Catalog, args []string) error {
 	flags := flag.NewFlagSet("index", flag.ContinueOnError)
 	host := flags.String("host", "", "index this host's captures (default: this Mac's)")
@@ -24,7 +24,7 @@ func runIndexCLI(config Config, catalog *Catalog, args []string) error {
 		return err
 	}
 	if *host != "" && *all {
-		return errors.New("usage: alexandria index [--host ID | --all-hosts] [SOURCE ...]")
+		return errors.New("usage: pharos index [--host ID | --all-hosts] [SOURCE ...]")
 	}
 	hosts := []string{}
 	if *host != "" {

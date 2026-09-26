@@ -70,7 +70,7 @@ func handleMCP(catalog *Catalog, request map[string]any) map[string]any {
 	}
 	if method == "initialize" {
 		params := mapValueDefault(request["params"])
-		return mcpResult(request, map[string]any{"protocolVersion": defaultString(params["protocolVersion"], "2025-06-18"), "capabilities": map[string]any{"tools": map[string]any{"listChanged": false}}, "serverInfo": map[string]any{"name": "ai-work-archive", "version": "0.2.0-go"}})
+		return mcpResult(request, map[string]any{"protocolVersion": defaultString(params["protocolVersion"], "2025-06-18"), "capabilities": map[string]any{"tools": map[string]any{"listChanged": false}}, "serverInfo": map[string]any{"name": "pharos", "version": "0.2.0-go"}})
 	}
 	if method == "tools/list" {
 		enabled, err := catalog.MCPEnabled()

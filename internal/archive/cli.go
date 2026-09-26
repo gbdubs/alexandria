@@ -45,7 +45,7 @@ func Run(arguments []string) error {
 			return runAdoptCLI(args)
 		}
 		if len(args) != 1 {
-			return fmt.Errorf("usage: alexandria init-library DIR [--adopt CONFIG [--full-check]]")
+			return fmt.Errorf("usage: pharos init-library DIR [--adopt CONFIG [--full-check]]")
 		}
 		config, err := InitLibrary(args[0], volumeIdentity)
 		if err != nil {
@@ -59,14 +59,14 @@ func Run(arguments []string) error {
 	}
 	if command == "volume-id" {
 		if len(args) != 1 {
-			return fmt.Errorf("usage: alexandria volume-id PATH")
+			return fmt.Errorf("usage: pharos volume-id PATH")
 		}
 		fmt.Println(volumeIdentity(expandPath(args[0])))
 		return nil
 	}
 	if command == "config-executable" {
 		if len(args) != 2 {
-			return fmt.Errorf("usage: alexandria config-executable CONFIG EXECUTABLE")
+			return fmt.Errorf("usage: pharos config-executable CONFIG EXECUTABLE")
 		}
 		return SetRootString(expandPath(args[0]), "executable", expandPath(args[1]))
 	}
@@ -182,7 +182,7 @@ func Run(arguments []string) error {
 		return printJSON(map[string]any{"sources": results, "identity_links_added": links})
 	case "repair-existing":
 		if len(args) != 1 {
-			return fmt.Errorf("usage: alexandria repair-existing SOURCE")
+			return fmt.Errorf("usage: pharos repair-existing SOURCE")
 		}
 		var source *SourceConfig
 		for index := range config.Sources {
@@ -262,7 +262,7 @@ func Run(arguments []string) error {
 }
 
 func usageError() error {
-	return fmt.Errorf("usage: alexandria [--config PATH] {init,init-library,add-this-mac,serve,capture,index,backup,ingest,repair-existing,refine-usage,build-tools,pricing,search,tl1,health,doctor,dev-ui,mcp,install-mcp,probe,volume-id}")
+	return fmt.Errorf("usage: pharos [--config PATH] {init,init-library,add-this-mac,serve,capture,index,backup,ingest,repair-existing,refine-usage,build-tools,pricing,search,tl1,health,doctor,dev-ui,mcp,install-mcp,probe,volume-id}")
 }
 func urlQueryEscape(value string) string {
 	replacer := strings.NewReplacer("%", "%25", " ", "%20", "+", "%2B", "?", "%3F", "&", "%26", "=", "%3D")
@@ -348,7 +348,7 @@ func runPricingCLI(catalog *Catalog, args []string) error {
 		return nil
 	}
 	if len(args) == 0 || args[0] != "check" || len(args) > 2 {
-		return fmt.Errorf("usage: alexandria pricing {check [FILE],prompt}")
+		return fmt.Errorf("usage: pharos pricing {check [FILE],prompt}")
 	}
 	data, err := pricingDocumentBytes()
 	if len(args) == 2 {

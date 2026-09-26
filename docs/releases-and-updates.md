@@ -52,7 +52,7 @@ To create a portable library from the downloaded archive, extract it, put
 embedded CLI:
 
 ```sh
-"/Volumes/YOUR-DRIVE/Pharos/Pharos.app/Contents/MacOS/alexandria" init-library "/Volumes/YOUR-DRIVE/Pharos"
+"/Volumes/YOUR-DRIVE/Pharos/Pharos.app/Contents/MacOS/pharos" init-library "/Volumes/YOUR-DRIVE/Pharos"
 open "/Volumes/YOUR-DRIVE/Pharos/Pharos.app"
 ```
 
@@ -76,7 +76,7 @@ The recommended first implementation is a small native Swift updater in the
 wrapper, with these steps:
 
 1. On a user-initiated **Check for Updates** action, read GitHub's latest
-   published release for `gbdubs/alexandria`. Offer periodic checks only after
+   published release for `gbdubs/pharos`. Offer periodic checks only after
    the user opts in, since this contacts GitHub. Compare numeric version
    components from the `vX.Y.Z` tag with `CFBundleVersion`; ignore drafts,
    prereleases, and versions at or below the running one.

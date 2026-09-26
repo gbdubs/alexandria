@@ -135,7 +135,7 @@
   };
   const copy = async text => {
     try {
-      if (typeof window.alexandriaCopyText === 'function') await window.alexandriaCopyText(text);
+      if (typeof window.pharosCopyText === 'function') await window.pharosCopyText(text);
       else await navigator.clipboard.writeText(text);
       toast('Copied');
     } catch { toast('Could not copy'); }
@@ -530,7 +530,7 @@
     const captureRun = capture.run, indexRun = index.run;
     if (capture.active && captureRun?.state !== 'running') {
       box.append(node('strong', '', 'A capture by another process is running'),
-        node('div', 'pharos-sub', 'Another process on this Mac, such as alexandria capture, holds the capture lock. Capture waits until it finishes.'), progressBar(null));
+        node('div', 'pharos-sub', 'Another process on this Mac, such as pharos capture, holds the capture lock. Capture waits until it finishes.'), progressBar(null));
       return box;
     }
     if (capture.active && captureRun) {

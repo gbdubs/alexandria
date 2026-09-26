@@ -44,7 +44,7 @@ blog post: **[grady.dev/projects/pharos](https://grady.dev/projects/pharos)**.
 - macOS 14 or later
 
 Once a release is published, download the prebuilt universal app from
-[GitHub Releases](https://github.com/gbdubs/alexandria/releases). See
+[GitHub Releases](https://github.com/gbdubs/pharos/releases). See
 [releases and updates](docs/releases-and-updates.md) to install it as a portable
 library without building from source.
 
@@ -61,7 +61,7 @@ configuration, and everything it indexes. Put it on an external drive to carry
 your history between Macs, or anywhere you like on a single Mac.
 
 ```sh
-git clone https://github.com/gbdubs/alexandria.git pharos
+git clone https://github.com/gbdubs/pharos.git pharos
 cd pharos
 macos/install-library.sh /Volumes/<your-drive>/Pharos
 open /Volumes/<your-drive>/Pharos/Pharos.app
@@ -71,8 +71,8 @@ Rerunning `install-library.sh` later upgrades the app and leaves your
 configuration and catalog alone.
 
 > Prefer a plain per-user install? `./launch.sh` builds and opens Pharos with
-> its configuration in `~/Library/Application Support/AI Work Archive/archive.toml`.
-> In that mode you add sources to `archive.toml` by hand; `alexandria probe` lists
+> its configuration in `~/Library/Application Support/Pharos/archive.toml`.
+> In that mode you add sources to `archive.toml` by hand; `pharos probe` lists
 > what it finds. See [Configuration](docs/configuration.md).
 
 ### 2. Choose your sources
@@ -198,13 +198,9 @@ customized for my use cases. Pharos works without it: with no TL1 source
 configured, the TL1 tab stays hidden. Delete it from your fork, or use it as a
 template for integrating your own tools.
 
-A few internal names also predate the name Pharos. The CLI is still called
-`alexandria`, and configuration lives under `AI Work Archive`, so existing
-installs keep working.
-
 ## Contact
 
-Found a bug, or have an idea for an addition? **[Open an issue](https://github.com/gbdubs/alexandria/issues)**.
+Found a bug, or have an idea for an addition? **[Open an issue](https://github.com/gbdubs/pharos/issues)**.
 I'm happy to discuss new sources, new analyses, or anything you've built on a
 fork. You can also find me at [grady.dev](https://grady.dev).
 

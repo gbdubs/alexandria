@@ -1007,7 +1007,7 @@ func TestMCPLauncherRunsFromLocalDisk(t *testing.T) {
 	}
 	fakeApp := func(app, name string) {
 		t.Helper()
-		binary := filepath.Join(app, "Contents", "MacOS", "alexandria")
+		binary := filepath.Join(app, "Contents", "MacOS", "pharos")
 		if err := os.MkdirAll(filepath.Dir(binary), 0o755); err != nil {
 			t.Fatal(err)
 		}

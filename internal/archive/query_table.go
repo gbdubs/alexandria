@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"alexandria/internal/querytable"
+	"github.com/gbdubs/pharos/internal/querytable"
 )
 
 func (s *Server) queryTableSchema(dataset string) (querytable.Schema, error) {
