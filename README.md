@@ -132,6 +132,10 @@ pasted, re-sent, or harness-injected text.
 
 ![Human Words: words typed, words per message, and a breakdown of where user-turn text came from](docs/images/human-words.png)
 
+**Usage → Carbon Impact** estimates the electricity and CO₂e behind your token
+usage. Compare all time with the last 30 days and adjust the grid, data center
+overhead, and energy assumptions.
+
 **Tools** joins every tool call to its result. It shows which calls fail, which
 are slow, and which results bloat the context window for the rest of the session.
 
@@ -151,7 +155,7 @@ work at a safe point, closes the library, and then ejects, or tells you why it
 can't.
 
 <p align="center">
-  <img src="docs/images/drive-panel.png" alt="The drive panel: syncing sources and updating the Library view, with an explanation and an Eject button" width="480">
+  <img src="docs/images/drive-panel.png" alt="The drive panel: indexing sources and updating the Library view, with an explanation and an Eject button" width="480">
 </p>
 
 For everything else (the CLI, the HTTP API, configuration keys, code signing,

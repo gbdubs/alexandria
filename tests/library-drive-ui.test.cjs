@@ -105,7 +105,7 @@ async function openPage(init, { onboarding = false } = {}) {
 
 describe('library, drive and captures UI', { skip }, () => {
   before(async () => {
-    execFileSync('go', ['build', '-o', binary, './cmd/alexandria'], { cwd: root, env: { ...process.env, GOTOOLCHAIN: 'local' } });
+    execFileSync('go', ['build', '-o', binary, './cmd/alexandria'], { cwd: root, env: { ...process.env, GOTOOLCHAIN: 'auto' } });
     // Sparse, so it takes only what is written; captures want 1 GB free.
     execFileSync('hdiutil', ['create', '-quiet', '-type', 'SPARSE', '-size', '3g', '-fs', 'APFS', '-volname', volume, path.join(work, 'library')]);
     const attached = execFileSync('hdiutil', ['attach', '-nobrowse', path.join(work, 'library.sparseimage')], { encoding: 'utf8' });
@@ -180,19 +180,20 @@ describe('library, drive and captures UI', { skip }, () => {
   it("shows another Mac's captures as needing an index, and indexes them", async () => {
     const { page, context, errors } = await openPage();
     await page.goto(`${base}/settings`);
-    const air = page.locator('#pharosHosts article[data-host="host-b"]');
+    const air = page.locator('#sourceGrid .source-card.remote[data-host="host-b"][data-source="claude"]');
     await air.waitFor();
-    assert.match(await air.textContent(), /MacBook Air.*1 source to index/s);
-    assert.match(await air.locator('tr[data-source="claude"]').textContent(), /Needs index/);
-    const studio = page.locator('#pharosHosts article[data-host="host-a"]');
+    assert.match(await air.textContent(), /MacBook Air.*Last indexed.*Last index attempt.*Coverage.*Account.*Captured.*needs index/s);
+    assert.equal(await air.locator('.source-state').count(), 0);
+    const studio = page.locator('#sourceGrid .source-card:not(.remote)', { has: page.locator('h2', { hasText: /^codex$/ }) });
     assert.match(await studio.textContent(), /this Mac/);
-    assert.match(await studio.locator('tr[data-source="codex"]').textContent(), /Indexed/);
+    assert.equal(await studio.locator('.source-state').count(), 0);
     assert.match(await page.locator('#sourceGrid .source-card').first().locator('.pharos-card-capture').textContent(), /Captured .* · indexed/);
-    await shoot(page.locator('#pharosHosts'), 'hosts-needs-index');
-    await air.getByRole('button', { name: 'Index MacBook Air' }).click();
-    // While it runs: the run line, and the header with its panel.
-    await page.locator('#pharosHosts .pharos-run', { hasText: 'Indexing captures' }).waitFor({ timeout: 15_000 });
-    await shoot(page.locator('#pharosHosts'), 'hosts-indexing');
+    await shoot(page.locator('#sourceGrid'), 'hosts-needs-index');
+    assert.equal(await air.getByRole('button').count(), 0);
+    await page.locator('#sourceToolbar').getByRole('button', { name: 'Index captured files' }).click();
+    // While it runs: the run line, and the drive badge with its panel.
+    await page.locator('#sourceActivity .pharos-run', { hasText: 'Indexing captures' }).waitFor({ timeout: 15_000 });
+    await shoot(page.locator('#sources'), 'hosts-indexing');
     // The chip shows only the drive's name and a brass dot; what runs is in its tooltip.
     await page.waitForFunction(() => document.querySelector('#pharosDrive')?.dataset.state === 'busy' && /Indexing/.test(document.querySelector('#pharosDrive').title), null, { timeout: 15_000 });
     assert.equal(await page.locator('#pharosDrive').textContent(), volume);
@@ -204,16 +205,22 @@ describe('library, drive and captures UI', { skip }, () => {
     assert.match(await panel.textContent(), /Indexing captures(, [^:]+)?: writing to .* now; unplugging it would lose that work/);
     await shoot(page, 'drive-panel-indexing');
     await page.keyboard.press('Escape');
-    await page.waitForFunction(() => /Indexed/.test(document.querySelector('#pharosHosts article[data-host="host-b"] tr[data-source="claude"]')?.textContent || ''), null, { timeout: 180_000 });
-    assert.doesNotMatch(await air.textContent(), /to index/);
+    await page.waitForFunction(() => /· indexed$/.test(document.querySelector('#sourceGrid .source-card.remote[data-host="host-b"][data-source="claude"] .pharos-card-capture')?.textContent.trim() || ''), null, { timeout: 180_000 });
+    assert.doesNotMatch(await air.textContent(), /needs index/);
     assert.equal(await page.locator('#pharosIndexAll').isDisabled(), true);
     const status = await api('/api/index');
-    assert.equal(status.hosts.find(host => host.id === 'host-b').sources[0].needs_index, false);
-    await shoot(page.locator('#pharosHosts'), 'hosts-indexed');
+    const remote = status.hosts.find(host => host.id === 'host-b').sources[0];
+    assert.equal(remote.needs_index, false);
+    assert.equal(remote.coverage, 'complete');
+    assert.ok(remote.path);
+    assert.ok(remote.last_attempt_at);
+    await shoot(page.locator('#sourceGrid'), 'hosts-indexed');
     await page.evaluate(() => scrollTo(0, 0));
     await shoot(page.locator('#sourceGrid .source-card').first(), 'source-card-capture');
-    // The existing per-source toggles still work.
+    // The per-source switches live in card headers.
     const card = page.locator('#sourceGrid .source-card', { has: page.locator('h2', { hasText: /^codex$/ }) });
+    assert.equal(await card.locator('.source-card-head [role="switch"]').count(), 1);
+    assert.equal(await card.getByRole('button', { name: 'Index source' }).count(), 0);
     await card.getByRole('switch').click();
     await card.getByText('Paused', { exact: true }).first().waitFor();
     const sources = await api('/api/sources');
@@ -227,6 +234,9 @@ describe('library, drive and captures UI', { skip }, () => {
   it("renders the drive's checks with copyable commands", async () => {
     const { page, context, errors } = await openPage();
     await page.goto(`${base}/settings`);
+    await page.locator('#healthCards > .panel', { hasText: 'Index size' }).locator('.big', { hasNotText: '…' }).waitFor();
+    await page.locator('#healthCards .health-host-list').waitFor();
+    await shoot(page.locator('#healthCards'), 'health-cards');
     const checks = page.locator('#pharosDriveChecks');
     await checks.locator('[data-check="encryption"]').waitFor({ timeout: 30_000 });
     const encryption = await checks.locator('[data-check="encryption"]').textContent();
@@ -238,7 +248,37 @@ describe('library, drive and captures UI', { skip }, () => {
     assert.match(await backupCheck.locator('code').textContent(), / backup /);
     assert.equal(await backupCheck.getByRole('button', { name: 'Copy' }).count(), 1);
     assert.match(await page.locator('#pharosDriveHealth h3').first().textContent(), new RegExp(`Library drive · ${volume}`));
+    await page.locator('#pharosDriveHealth').getByRole('button', { name: 'Collapse' }).click();
+    assert.equal(await checks.isVisible(), false);
+    assert.ok(await page.locator('#pharosDriveHealth .pharos-health-attention .pharos-chip').count() >= 1);
+    await shoot(page.locator('#pharosDriveHealth'), 'health-drive-collapsed');
+    await page.locator('#pharosDriveHealth').getByRole('button', { name: 'Encryption' }).click();
+    assert.equal(await checks.isVisible(), true);
     await shoot(page.locator('#pharosDriveHealth'), 'health-drive');
+    assert.deepEqual(errors, []);
+    await context.close();
+  });
+
+  it('shows disk space in the drive panel and keeps source actions together', async () => {
+    const { page, context, errors } = await openPage();
+    const headerAction = page.locator('#headerSync');
+    await headerAction.waitFor();
+    assert.equal(await headerAction.getAttribute('title'), 'Capture and Index');
+    assert.equal(await headerAction.getAttribute('aria-label'), 'Capture and Index');
+    await page.goto(`${base}/settings`);
+    const actions = page.locator('#sourceToolbar');
+    await actions.getByRole('button', { name: 'Find sources on this Mac…' }).waitFor();
+    assert.equal(await actions.getByRole('button', { name: 'Capture this Mac' }).count(), 1);
+    assert.equal(await actions.getByRole('button', { name: 'Index captured files' }).count(), 1);
+    assert.equal(await page.locator('#sourceGrid .sync-source, #sourceGrid .remote button, #pharosHosts').count(), 0);
+    await page.locator('#pharosDrive').click();
+    const drivePanel = page.getByRole('dialog', { name: 'Library drive' });
+    await drivePanel.getByText('Archive size').waitFor();
+    await page.waitForFunction(() => [...document.querySelectorAll('#pharosDrivePanel dd')].every(item => /\d+(?:\.\d+)? (?:B|KB|MB|GB|TB)/.test(item.textContent)));
+    assert.deepEqual(await drivePanel.locator('dt').allTextContents(), ['Free space', 'Archive size']);
+    for (const value of await drivePanel.locator('dd').allTextContents()) assert.match(value, /^\d+(?:\.\d+)? (?:B|KB|MB|GB|TB)$/);
+    await page.keyboard.press('Escape');
+
     assert.deepEqual(errors, []);
     await context.close();
   });

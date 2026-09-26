@@ -40,9 +40,9 @@ test('Usage toggles between tokens and writing, remembers the choice, and charts
       if (url.pathname === '/api/query/usage/aggregations') {
         const body = route.request().postDataJSON();
         aggregations.push(body);
-        return json({ metrics: body.aggregations.map((aggregation, index) => ({ id: aggregation.id, buckets: aggregation.groupBy[1] === 'model_family'
+        return json({ metrics: body.aggregations.map((aggregation, index) => ({ id: aggregation.id, buckets: aggregation.groupBy?.[1] === 'model_family'
           ? ['m1', 'm2', 'm3', 'm4', 'm5', 'small-a', 'small-b'].map((model, rank) => ({ keys: [periodKey(aggregation.groupBy[0]), model], value: 700 - 100 * rank, count: 1 }))
-          : [{ keys: [periodKey(aggregation.groupBy[0]), ...(aggregation.groupBy.length > 1 ? ['claude'] : [])], value: aggregation.field === 'cost_usd' ? 1_250_000_000_000 : 2_500_000_000 * (index + 1), count: 1 }] })) });
+          : [{ keys: [periodKey(aggregation.groupBy?.[0] ?? 'day'), ...((aggregation.groupBy?.length ?? 0) > 1 ? ['claude'] : [])], value: aggregation.field === 'cost_usd' ? 1_250_000_000_000 : 2_500_000_000 * (index + 1), count: 1 }] })) });
       }
       if (url.pathname.endsWith('/distinct')) return json({ values: [], hasMore: false });
       if (url.pathname.endsWith('/field-stats')) return json({});
@@ -57,6 +57,9 @@ test('Usage toggles between tokens and writing, remembers the choice, and charts
     // Tokens is the default, with its chart split by token type.
     await page.goto('http://usage-ui.test/usage');
     await page.locator('#usage .usage-chart h3', { hasText: 'Tokens per week by token type' }).waitFor();
+    await page.locator('.token-summary .mcp-metric').first().waitFor();
+    assert.deepEqual(await page.locator('.token-summary .mcp-metric > span').allTextContents(), ['Total tokens', 'API price equivalent', 'Cache hit rate', 'Output tokens', 'Agent sessions']);
+    assert.equal(await page.locator('.token-summary .mcp-metric').count(), 5);
     assert.equal(await page.getByRole('group', { name: 'Usage view' }).getByRole('button', { name: 'Machine Tokens' }).getAttribute('aria-pressed'), 'true');
     assert.equal(await page.locator('.refresh-prices-notice').count(), 0);
     pricing = { ...pricing, unpriced_models: [{ model: 'new-model', provider: 'test', tokens: 50, first_day: day(1), last_day: day(1) }] };
@@ -136,6 +139,11 @@ test('Usage toggles between tokens and writing, remembers the choice, and charts
     await tokensCard.locator('.big', { hasText: '2.5T' }).waitFor();
     assert.match(await tokensCard.innerText(), /\$123B API cost[\s\S]*400B in the last 30 days/);
     await tokensCard.click();
+    await page.locator('#usage.view.active .usage-chart h3', { hasText: 'API cost per month by provider' }).waitFor();
+    assert.equal(new URL(page.url()).searchParams.get('usage'), 'tokens');
+    await page.goto('http://usage-ui.test/settings');
+    const pricingCard = page.locator('#healthCards > .panel', { hasText: 'Known Pricing' });
+    await pricingCard.getByRole('button', { name: 'Open in Usage' }).click();
     await page.locator('#usage.view.active .usage-chart h3', { hasText: 'API cost per month by provider' }).waitFor();
     assert.equal(new URL(page.url()).searchParams.get('usage'), 'tokens');
     await page.goto('http://usage-ui.test/settings');

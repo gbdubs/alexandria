@@ -5,10 +5,9 @@ and CO₂e behind token usage. The app embeds this file; Settings → Carbon
 footprint and `GET /api/health/carbon` apply it to the same de-mirrored usage
 ledger as the Usage page.
 
-The result is **an estimate, not a measurement**. Anthropic publishes no
-per-token or per-query energy, and OpenAI has published only one per-query
-average, so every number here comes from comparable measured systems. Training,
-embodied hardware emissions, water, and networking are excluded.
+Anthropic publishes no per-token or per-query energy, and OpenAI has published
+only one per-query average, so every number here comes from comparable measured
+systems.
 
 ## Formula
 
@@ -18,6 +17,10 @@ For each model tier and token type:
 Wh  = tokens ÷ 1,000,000 × tier Wh per 1M output tokens × token-type ratio
 CO₂e g = Wh × PUE × grid g CO₂e/kWh ÷ 1,000
 ```
+
+This estimates inference electricity emissions, not a direct measurement.
+Model training, embodied hardware emissions, water, networking, and your own
+computer are outside the estimate.
 
 - **Tiers** (`tiers`) give server energy per million output tokens before
   data-center overhead. A model takes the first tier, in file order, with a
@@ -38,6 +41,17 @@ highs together, so the low–high range is deliberately wide: in agentic coding
 most tokens are cache reads, and the cache-read ratio is the least certain
 factor. The grid and PUE can be changed on the card and are remembered per
 browser.
+
+The **Prefill ratio** sensitivity compares the Labs 5:1 output-to-input
+assumption (an Anthropic API price proxy) with Watershed's modeled 3:1 ratio.
+The Watershed option multiplies all three input
+categories (uncached input, cache write, cache read) by `5/3`, preserving their
+relative cache discounts and each estimate level's spread. It does not change
+output energy or the API's default `co2e_g`; it is a browser-only sensitivity,
+not a measured provider factor. The 3:1 assumption is discussed in
+[Watershed's AI emissions framework](https://watershed.com/en-GB/blog/ai-emissions-framework).
+See [the Watershed PUE handoff](watershed-pue-handoff.md) for an independent
+question about the framework's factor derivation.
 
 ## File contract
 

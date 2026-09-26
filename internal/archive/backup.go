@@ -758,7 +758,7 @@ var (
 	backupWALPoll         = 100 * time.Millisecond
 )
 
-var errBackupWALGrew = errors.New("the catalog's WAL grew by more than the backup allows while it was copied (a sync is probably writing); back up again once it finishes")
+var errBackupWALGrew = errors.New("the catalog's WAL grew by more than the backup allows while it was copied (indexing is probably writing); back up again once it finishes")
 
 // boundWAL returns a context for the snapshot that ends once the source's WAL
 // grows by more than backupWALGrowth, recording the peak it saw.

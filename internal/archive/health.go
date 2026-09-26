@@ -11,13 +11,15 @@ import (
 // ledger), storage (filesystem and diskutil calls), and freshness. The two
 // catalog-derived sections are kept until the next commit (see derivedCache).
 
-// HealthCounts reports the indexed workspace and message totals.
+// HealthCounts reports indexed workspace, conversation, and message totals.
 func (c *Catalog) HealthCounts(ctx context.Context) (map[string]any, error) {
 	return cachedValue(ctx, c, "health:counts", func(ctx context.Context) (map[string]any, error) {
 		result := map[string]any{}
 		for table, count := range map[string]string{
-			"workspaces": "SELECT COUNT(*) FROM workspaces",
-			"messages":   "SELECT COALESCE((SELECT value FROM catalog_counts WHERE name='messages'),(SELECT COUNT(*) FROM messages))",
+			"workspaces":     "SELECT COUNT(*) FROM workspaces",
+			"conversations":  "SELECT COUNT(*) FROM conversations",
+			"messages":       "SELECT COALESCE((SELECT value FROM catalog_counts WHERE name='messages'),(SELECT COUNT(*) FROM messages))",
+			"human_messages": "SELECT COUNT(*) FROM messages WHERE role='user' AND kind='message'",
 		} {
 			var value int64
 			if err := c.DB.QueryRowContext(ctx, count).Scan(&value); err != nil {

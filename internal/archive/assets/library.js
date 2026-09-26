@@ -2,15 +2,19 @@
 // or writes the library and how to disconnect its drive; the header shows it,
 // with Eject. Eject goes through the app (the pharosLibrary message handler),
 // which releases the library before it ejects the drive; in a plain browser
-// the page says how to eject in Finder instead. Settings → Sources gains the
-// Macs whose captures are in the library, with Capture and Index; Settings →
+// the page says how to eject in Finder instead. Settings → Sources shows
+// captures from other Macs alongside this Mac's sources; Settings →
 // Health gains the drive's checks and backups.
 (() => {
   'use strict';
   const CSS = `
 .pharos-drive{display:flex;align-items:center;gap:7px;min-width:0;max-width:190px;height:32px;box-sizing:border-box;padding:0 10px;border:1px solid #f3ebdc30;border-radius:4px;background:#ffffff0f;color:var(--mast-ink,#f3ebdc);font-size:var(--fs-md,13px);line-height:1;white-space:nowrap}
 .pharos-drive:hover,.pharos-drive[aria-expanded="true"]{border-color:var(--mast-brass,#d4a857);color:#f1d690}
+.header-sync.running .app-icon{animation:pharos-header-turn 1.4s linear infinite}
+@keyframes pharos-header-turn{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.header-sync.running .app-icon{animation:none}}
 .pharos-drive-name{flex:0 1 auto;min-width:2.5em;font-weight:650;overflow:hidden;text-overflow:ellipsis}
+.pharos-drive-alert{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;color:#f1d690;font-size:var(--fs-xs,12px)}
 .pharos-dot{flex:none;display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--sea,#315845)}
 .pharos-drive .pharos-dot{background:#8cc6a0}
 .pharos-dot.busy{background:var(--mast-brass,#d4a857);box-shadow:0 0 0 3px color-mix(in srgb,var(--mast-brass,#d4a857) 30%,transparent)}
@@ -19,11 +23,17 @@
 .pharos-drive-panel h2{margin:0;font:700 20px/1.2 var(--serif,serif)}
 .pharos-drive-panel h3{margin:14px 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted,#666)}
 .pharos-drive-panel p{margin:8px 0}
+.pharos-drive-space{display:grid;grid-template-columns:1fr auto;gap:5px 12px;margin:12px 0 2px;padding:10px 0;border-top:1px solid var(--line,#ccc);border-bottom:1px solid var(--line,#ccc)}
+.pharos-drive-space dt{color:var(--muted,#666)}
+.pharos-drive-space dd{margin:0;font-variant-numeric:tabular-nums;font-weight:650}
 .pharos-sub{color:var(--muted,#666);overflow-wrap:anywhere}
 .pharos-activity{padding:8px 0;border-bottom:1px solid var(--line,#ccc)}
 .pharos-activity:last-child{border-bottom:0}
 .pharos-activity-head{display:flex;align-items:center;gap:8px;font-weight:650}
 .pharos-activity .pharos-sub{margin-top:2px}
+.pharos-last-index{padding-top:8px;border-top:1px solid var(--line,#ccc)}
+.pharos-last-index h3{margin-top:4px}
+.pharos-last-index .pharos-sub{margin-top:3px}
 .pharos-bar{height:6px;margin:7px 0 4px;overflow:hidden;border-radius:6px;background:var(--line,#ccc)}
 .pharos-bar>span{display:block;height:100%;min-width:6px;background:var(--accent,#315845);transition:width .25s}
 .pharos-bar.indeterminate>span{width:35%;animation:pharos-slide 1.6s ease-in-out infinite}
@@ -44,17 +54,12 @@
 .pharos-section-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:end;gap:10px 20px;margin-bottom:12px}
 .pharos-section-head h3{margin:0 0 4px}
 .pharos-section-head p{margin:0;max-width:720px}
-.pharos-section-head .pharos-actions{display:flex;flex-wrap:wrap;gap:8px}
-.pharos-host{background:var(--panel,#fff);border:1px solid var(--line,#ccc);border-radius:11px;padding:14px 17px;margin-bottom:12px}
-.pharos-host-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
-.pharos-host-head h4{margin:0;font:700 17px/1.25 var(--serif,serif)}
-.pharos-host-head .pharos-button{margin-left:auto}
+.pharos-health-actions{display:flex;align-items:center;flex-wrap:wrap;gap:9px}.pharos-health-attention{display:flex;align-items:center;flex-wrap:wrap;gap:6px}.pharos-health-attention-label{color:var(--warn,#98601d)}.pharos-health-attention .pharos-chip{background:var(--panel,#fff)}.pharos-health-details[hidden]{display:none}
+.source-host{display:block;margin:0 0 7px;color:var(--muted,#666);font-size:12px}
+.source-card.remote{background:color-mix(in srgb,var(--panel,#fff) 58%,var(--bg,#eee));border-style:dashed;box-shadow:none}
+.source-card.remote .source-card-head h2{color:color-mix(in srgb,var(--ink,#222) 78%,var(--muted,#666))}
 .pharos-chip{border:1px solid var(--line,#ccc);border-radius:20px;padding:1px 8px;font-size:12px;color:var(--muted,#666)}
 .pharos-chip.warn{color:var(--warn,#98601d);border-color:color-mix(in srgb,var(--warn,#98601d) 50%,var(--line,#ccc))}
-.pharos-table{width:100%;margin-top:10px;border-collapse:collapse;font-size:13px}
-.pharos-table th{text-align:left;font-weight:500;color:var(--muted,#666);padding:5px 10px 5px 0;border-bottom:1px solid var(--line,#ccc)}
-.pharos-table td{padding:6px 10px 6px 0;border-bottom:1px solid var(--line,#ccc);vertical-align:top}
-.pharos-table tr:last-child td{border-bottom:0}
 .pharos-run{margin:0 0 12px;padding:10px 14px;border:1px dashed var(--line,#ccc);border-radius:11px}
 .pharos-card-capture{margin-top:9px;font-size:12px}
 .pharos-checks{display:grid;gap:0;background:var(--panel,#fff);border:1px solid var(--line,#ccc);border-radius:14px;padding:4px 18px}
@@ -117,6 +122,11 @@
     if (value) span.title = new Date(value).toLocaleString();
     return span;
   };
+  const fullTime = value => {
+    const span = when(value);
+    if (value) span.append(` · ${new Date(value).toLocaleString()}`);
+    return span;
+  };
   const progressBar = value => {
     const bar = node('div', 'pharos-bar' + (value == null ? ' indeterminate' : '')), fill = node('span');
     if (value != null) fill.style.width = `${Math.round(value * 100)}%`;
@@ -141,8 +151,19 @@
 
   // ---- library status (header chip and panel)
   let status = null, statusError = null, statusTimer = null, statusRequest = null;
+  let recentIndex = null, indexStatusRequest = null;
   const listeners = new Set();
   const driveName = () => status?.drive?.name || 'the drive';
+  const indexFailed = run => run && (run.state !== 'complete' || (run.results || []).some(result => result.error));
+
+  function refreshIndexStatus() {
+    if (!indexStatusRequest) {
+      indexStatusRequest = call('/api/activity').then(value => {
+        recentIndex = (value.runs || []).find(run => run.state !== 'running') || null;
+      }, () => { recentIndex = null; }).finally(() => { indexStatusRequest = null; });
+    }
+    return indexStatusRequest;
+  }
 
   async function refreshStatus() {
     clearTimeout(statusTimer);
@@ -150,7 +171,7 @@
       statusRequest = call('/api/library/status').then(value => { status = value; statusError = null; }, error => { statusError = error; })
         .finally(() => { statusRequest = null; });
     }
-    await statusRequest;
+    await Promise.all([statusRequest, refreshIndexStatus()]);
     renderChip();
     renderPanel();
     listeners.forEach(listener => listener(status));
@@ -160,7 +181,8 @@
   }
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshStatus(); });
 
-  let chip = null, panel = null, ejectState = null;
+  let chip = null, headerSync = null, headerCaptureIndexRunning = false, panel = null, panelMode = 'drive', ejectState = null;
+  let driveSpace = null, driveSpaceRequest = null, driveSpaceError = false;
   function ensureChip() {
     if (chip?.isConnected) return chip;
     const icons = document.querySelector('body>header .header-icons');
@@ -170,13 +192,43 @@
     chip.type = 'button';
     chip.setAttribute('aria-haspopup', 'dialog');
     chip.setAttribute('aria-expanded', 'false');
-    chip.onclick = () => (panel ? closePanel() : openPanel());
+    chip.onclick = () => (panel && panelMode === 'drive' ? closePanel() : openPanel('drive'));
     icons.prepend(chip);
     return chip;
   }
 
+  function ensureHeaderAction() {
+    const drive = ensureChip();
+    if (!drive) return null;
+    if (headerSync?.isConnected) return headerSync;
+    headerSync = node('button', 'header-icon header-sync');
+    headerSync.id = 'headerSync';
+    headerSync.type = 'button';
+    headerSync.title = 'Capture and Index';
+    headerSync.setAttribute('aria-label', 'Capture and Index');
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+    icon.setAttribute('class', 'app-icon');
+    icon.setAttribute('viewBox', '0 0 24 24');
+    icon.setAttribute('aria-hidden', 'true');
+    use.setAttribute('href', '#ph-icon-refresh');
+    icon.append(use);
+    headerSync.append(icon);
+    headerSync.onclick = captureAndIndex;
+    drive.after(headerSync);
+    return headerSync;
+  }
+
+  function renderHeaderAction() {
+    const action = ensureHeaderAction();
+    if (!action) return;
+    const active = status?.activities?.some(activity => ['capture', 'capture-other', 'sync', 'index'].includes(activity.kind));
+    action.disabled = headerCaptureIndexRunning || Boolean(hostsBusy) || Boolean(active);
+    action.classList.toggle('running', headerCaptureIndexRunning);
+  }
+
   function activitySummary(activity) {
-    const verb = {sync: 'Syncing', index: 'Indexing', capture: 'Capturing', 'capture-other': 'Capturing', backup: 'Backing up', git: 'Checking Git', maintenance: 'Updating'}[activity.kind] || activity.label;
+    const verb = {sync: 'Indexing', index: 'Indexing', capture: 'Capturing', 'capture-other': 'Capturing', backup: 'Backing up', git: 'Checking Git', maintenance: 'Updating'}[activity.kind] || activity.label;
     return activity.progress ? `${verb} ${Math.round(activity.progress * 100)}%` : verb;
   }
 
@@ -186,6 +238,7 @@
   function renderChip() {
     const target = ensureChip();
     if (!target) return;
+    renderHeaderAction();
     const dot = node('span', 'pharos-dot'), name = node('span', 'pharos-drive-name');
     let state;
     if (!status) {
@@ -196,31 +249,46 @@
       name.textContent = status.drive?.ejectable ? status.drive.name : status.portable ? 'Library' : 'This Mac';
       const activities = status.activities || [];
       if (activities.length) dot.classList.add('busy');
-      state = activities.length ? activities.map(activitySummary).join(', ') : 'Nothing running';
+      else if (indexFailed(recentIndex)) dot.classList.add('warn');
+      state = activities.length ? activities.map(activitySummary).join(', ') : indexFailed(recentIndex) ? `Last index ${recentIndex.state === 'interrupted' ? 'interrupted' : 'failed'}` : 'Nothing running';
     }
     target.replaceChildren(dot, name);
+    if (status && !(status.activities || []).length && indexFailed(recentIndex)) {
+      target.append(node('span', 'pharos-drive-alert', recentIndex.state === 'interrupted' ? 'Index stopped' : 'Index failed'));
+    }
     target.dataset.state = !status ? 'unavailable' : status.idle ? 'idle' : 'busy';
     target.title = `${name.textContent}: ${state}`;
     target.setAttribute('aria-label', `Library drive: ${target.title}`);
   }
 
   function placePanel() {
-    if (!panel || !chip) return;
-    const box = chip.getBoundingClientRect(), header = document.querySelector('body>header')?.getBoundingClientRect();
+    const anchor = chip;
+    if (!panel || !anchor) return;
+    const box = anchor.getBoundingClientRect(), header = document.querySelector('body>header')?.getBoundingClientRect();
     panel.style.top = `${Math.round((header?.bottom ?? box.bottom) + 8)}px`;
     panel.style.left = `${Math.round(Math.max(12, Math.min(box.left, window.innerWidth - panel.offsetWidth - 12)))}px`;
   }
 
-  function openPanel() {
+  function refreshDriveSpace() {
+    if (driveSpaceRequest) return driveSpaceRequest;
+    driveSpaceRequest = call('/api/health/drive').then(value => { driveSpace = value; driveSpaceError = false; renderPanel(); }, () => { driveSpace = null; driveSpaceError = true; renderPanel(); })
+      .finally(() => { driveSpaceRequest = null; if (panel && panelMode === 'drive' && driveSpace?.status === 'checking') setTimeout(() => { if (panel && panelMode === 'drive') refreshDriveSpace(); }, 1000); });
+    return driveSpaceRequest;
+  }
+
+  function openPanel(mode = 'drive') {
     if (!ensureChip()) return;
+    if (panel) closePanel();
+    panelMode = mode;
     panel = node('section', 'pharos-drive-panel');
     panel.id = 'pharosDrivePanel';
     panel.setAttribute('role', 'dialog');
-    panel.setAttribute('aria-label', 'Library drive');
+    panel.setAttribute('aria-label', mode === 'activity' ? 'Running activity' : 'Library drive');
     document.body.append(panel);
-    chip.setAttribute('aria-expanded', 'true');
+    chip?.setAttribute('aria-expanded', 'true');
     renderPanel();
     refreshStatus();
+    if (mode === 'drive') refreshDriveSpace();
   }
 
   function closePanel() {
@@ -241,14 +309,23 @@
     if (!panel) return;
     panel.replaceChildren();
     if (!status) {
-      panel.append(node('h2', '', 'Library'), node('p', 'pharos-error', statusError?.status === 503 ? 'Pharos is stopping; it has released or is releasing the library.' : `Could not read the library's status${statusError ? `: ${statusError.message}` : ''}.`));
+      panel.append(node('h2', '', panelMode === 'activity' ? 'Running activity' : 'Library'), node('p', 'pharos-error', statusError?.status === 503 ? 'Pharos is stopping; it has released or is releasing the library.' : `Could not read the library's status${statusError ? `: ${statusError.message}` : ''}.`));
       placePanel();
       return;
     }
     const drive = status.drive || {};
-    panel.append(node('h2', '', drive.ejectable ? drive.name : status.portable ? 'Library' : 'This Mac'));
-    const where = [{external: 'External drive', 'disk-image': 'Disk image', internal: "This Mac's internal disk"}[drive.location] || 'Drive', status.library_dir].filter(Boolean).join(' · ');
-    panel.append(node('div', 'pharos-sub', where));
+    if (panelMode === 'activity') {
+      panel.append(node('h2', '', 'Running activity'));
+    } else {
+      panel.append(node('h2', '', drive.ejectable ? drive.name : status.portable ? 'Library' : 'This Mac'));
+      const where = [{external: 'External drive', 'disk-image': 'Disk image', internal: "This Mac's internal disk"}[drive.location] || 'Drive', status.library_dir].filter(Boolean).join(' · ');
+      panel.append(node('div', 'pharos-sub', where));
+      const space = node('dl', 'pharos-drive-space');
+      const unknown = driveSpaceError || (driveSpace && driveSpace.status !== 'checking') ? 'Unavailable' : 'Checking…';
+      space.append(node('dt', '', 'Free space'), node('dd', '', driveSpace?.free_bytes == null ? unknown : size(driveSpace.free_bytes)),
+        node('dt', '', 'Pharos size'), node('dd', '', driveSpace?.sizes?.library_bytes == null ? unknown : size(driveSpace.sizes.library_bytes)));
+      panel.append(space);
+    }
 
     panel.append(node('h3', '', 'Running now'));
     const activities = status.activities || [];
@@ -262,6 +339,20 @@
       panel.append(item);
     });
 
+    if (recentIndex) {
+      const last = node('div', 'pharos-last-index');
+      last.append(node('h3', '', 'Last index this session'));
+      const failed = indexFailed(recentIndex);
+      const label = recentIndex.state === 'interrupted' ? 'Interrupted' : failed ? 'Failed' : 'Complete';
+      last.append(node('div', failed ? 'pharos-error' : '', `${label} · ${ago(recentIndex.completed_at)} · ${recentIndex.completed_sources} of ${recentIndex.total_sources} sources`));
+      last.append(node('div', 'pharos-sub', `${plural(recentIndex.workspaces, 'workspace')} updated · ${plural(recentIndex.conversations, 'conversation')}`));
+      const errors = (recentIndex.results || []).filter(result => result.error).map(result => `${result.source}: ${result.error}`);
+      if (recentIndex.error && !errors.some(error => error.includes(String(recentIndex.error)))) errors.unshift(String(recentIndex.error));
+      if (errors.length) last.append(node('div', 'pharos-error', errors.join(' · ')));
+      panel.append(last);
+    }
+
+    if (panelMode === 'activity') { placePanel(); return; }
     const unplug = status.unplug || {};
     if (unplug.action === 'eject') {
       panel.append(node('h3', '', 'Disconnecting'));
@@ -280,8 +371,7 @@
       // A plain browser has no way to eject: say how.
       const note = node('div', 'pharos-note');
       note.append(node('p', '', `Eject ${drive.name} in Finder: click ⏏ beside it in the sidebar. Or in Terminal:`),
-        codeLine(`diskutil eject ${shellWord(drive.mount_point)}`),
-        node('p', 'pharos-sub', `With the Pharos app running, it lets go of the library before ${drive.name} unmounts, or says why it can't yet. If Pharos runs without its app (alexandria serve), stop that first.`));
+        codeLine(`diskutil eject ${shellWord(drive.mount_point)}`));
       row.append(note);
       return row;
     }
@@ -356,7 +446,7 @@
     },
   };
 
-  // ---- Settings → Sources: Macs and their captures
+  // ---- Settings → Sources: this Mac's sources and captures from other Macs
   let hostsData = null, hostsBusy = null, hostsError = null;
 
   async function loadHosts() {
@@ -368,103 +458,54 @@
     return running;
   }
 
-  function hostRows(host, current) {
-    const rows = new Map();
-    for (const source of host?.sources || []) rows.set(source.name, {name: source.name, kind: source.kind, captured: source});
-    if (current) {
-      for (const source of hostsData.sources.items || []) {
-        const row = rows.get(source.name) || {name: source.name, kind: source.kind};
-        row.configured = source;
-        rows.set(source.name, row);
-      }
-    }
-    return [...rows.values()];
-  }
-
-  function rowState(row) {
-    const captured = row.captured, configured = row.configured;
-    if (captured?.error) return ['Failed: ' + captured.error, 'pharos-error'];
-    if (captured?.needs_index) return ['Needs index', 'pharos-warn'];
-    if (captured) return ['Indexed', 'pharos-ok'];
-    if (configured && !configured.enabled) return ['Paused', 'pharos-sub'];
-    return ['Not captured yet', 'pharos-sub'];
-  }
-
   function renderHosts() {
     const grid = document.getElementById('sourceGrid');
     if (!grid || !hostsData) return;
-    let section = document.getElementById('pharosHosts');
-    if (!section) {
-      section = node('section', 'pharos-section');
-      section.id = 'pharosHosts';
-      grid.after(section);
-    }
     const {sources, index, capture} = hostsData;
-    const thisHost = sources.host || index.host || {};
     const captured = index.hosts || [];
-    const busy = Boolean(hostsBusy) || index.active || index.sync_active;
-    const drive = status?.drive?.ejectable ? status.drive.name : 'the library';
-    const head = node('div', 'pharos-section-head'), intro = node('div'), actions = node('div', 'pharos-actions');
-    intro.append(node('h3', '', 'Macs and captures'),
-      node('p', 'muted', `A capture copies a Mac's conversation files onto ${drive} in seconds to minutes; indexing parses them into the library and can run later, on any Mac, whether or not the Mac that captured them is here.`));
-    const captureButton = button(capture.active ? 'Capturing…' : `Capture ${thisHost.label || 'this Mac'}`, '', () => startCapture());
+    const busy = headerCaptureIndexRunning || Boolean(hostsBusy) || index.active || index.sync_active || capture.active;
+    const actions = document.getElementById('sourceRunActions');
+    const captureButton = button(capture.active ? 'Capturing…' : 'Capture this Mac', '', () => startCapture());
     captureButton.id = 'pharosCaptureHost';
-    captureButton.disabled = capture.active || !sources.enabled || hostsBusy === 'capture';
+    captureButton.disabled = busy || !sources.enabled;
     const needing = captured.filter(host => host.sources.some(source => source.needs_index));
-    const indexAll = button('Index all Macs', 'primary', () => startIndex({all_hosts: true}, 'every Mac'));
+    const indexAll = button('Index captured files', 'primary', () => startIndex({all_hosts: true}, 'captured files'));
     indexAll.id = 'pharosIndexAll';
     indexAll.disabled = busy || !needing.length;
-    indexAll.title = index.sync_active ? 'A sync or index is running' : needing.length ? `Index ${needing.map(host => host.label).join(', ')}` : 'Everything captured is indexed';
-    actions.append(captureButton, indexAll);
-    head.append(intro, actions);
-    section.replaceChildren(head);
-
+    indexAll.title = capture.active ? 'Capture is running; index after it finishes' : index.sync_active ? 'Source indexing is running' : needing.length ? `Index captures from ${needing.map(host => host.label).join(', ')}` : 'Everything captured is indexed';
+    actions?.replaceChildren(captureButton, indexAll);
+    renderHeaderAction();
+    const activity = document.getElementById('sourceActivity');
+    activity?.replaceChildren();
     const line = runLine(capture, index);
-    if (line) section.append(line);
-    if (hostsError) section.append(node('p', 'pharos-error', hostsError));
-    if (index.error && !captured.length) section.append(node('p', 'pharos-sub', `No captures yet (${index.error}).`));
+    if (line) activity?.append(line);
+    if (hostsError) activity?.append(node('p', 'pharos-error', hostsError));
+    if (index.error && !captured.length) activity?.append(node('p', 'pharos-sub', `No captures yet (${index.error}).`));
 
-    const ordered = [captured.find(host => host.current) || {id: thisHost.id, label: thisHost.label, user: thisHost.user, current: true, sources: []},
-      ...captured.filter(host => !host.current)];
-    for (const host of ordered) {
-      const card = node('article', 'pharos-host'), top = node('div', 'pharos-host-head');
-      card.dataset.host = host.id;
-      top.append(node('h4', '', host.label || host.id));
-      if (host.current) top.append(node('span', 'pharos-chip', 'this Mac'));
-      if (host.user) top.append(node('span', 'pharos-chip', host.user));
-      const waiting = host.sources.filter(source => source.needs_index).length;
-      if (waiting) top.append(node('span', 'pharos-chip warn', `${plural(waiting, 'source')} to index`));
-      const indexHost = button(`Index ${host.label || host.id}`, host.current ? '' : 'primary', () => startIndex({host: host.id}, host.label || host.id));
-      indexHost.disabled = busy || !host.sources.length;
-      indexHost.title = !host.sources.length ? 'Nothing captured from this Mac yet' : index.sync_active ? 'A sync or index is running' : '';
-      top.append(indexHost);
-      card.append(top);
-      const rows = hostRows(host, host.current);
-      if (!rows.length) {
-        card.append(node('p', 'pharos-sub', host.current ? 'No sources on this Mac yet.' : 'Nothing captured.'));
-      } else {
-        const table = node('table', 'pharos-table'), header = node('tr');
-        ['Source', 'Captured', 'Indexed', 'State'].forEach(name => header.append(node('th', '', name)));
-        table.append(header);
-        for (const row of rows) {
-          const tr = node('tr'), [state, cls] = rowState(row);
-          const name = node('td');
-          name.append(node('strong', '', row.name));
-          if (row.kind && row.kind !== row.name) name.append(node('span', 'pharos-sub', ` · ${row.kind}`));
-          const capturedCell = node('td');
-          if (row.captured?.captured_at) {
-            capturedCell.append(when(row.captured.captured_at));
-            if (!row.captured.capture_finished) capturedCell.append(node('span', 'pharos-warn', ' · interrupted'));
-          } else capturedCell.append(node('span', 'pharos-sub', 'not captured'));
-          const indexedCell = node('td');
-          indexedCell.append(when(row.captured?.indexed_at || row.configured?.last_success_at));
-          tr.append(name, capturedCell, indexedCell, node('td', cls, state));
-          tr.dataset.source = row.name;
-          table.append(tr);
+    grid.querySelectorAll('.source-card.remote').forEach(card => card.remove());
+    for (const host of captured.filter(host => !host.current)) {
+      for (const source of host.sources || []) {
+        const card = node('article', 'source-card remote'), head = node('div', 'source-card-head'), title = node('div');
+        card.dataset.host = host.id;
+        card.dataset.source = source.name;
+        title.append(node('h2', '', source.name), node('span', 'source-host', [host.label || host.id, host.user].filter(Boolean).join(' · ')));
+        head.append(title);
+        const path = node('div', 'source-path', source.path || 'No path recorded'), facts = node('dl', 'source-facts');
+        for (const [label, value] of [['Last indexed', source.indexed_at], ['Last index attempt', source.last_attempt_at]]) {
+          const item = node('dd');
+          item.append(fullTime(value));
+          facts.append(node('dt', '', label), item);
         }
-        card.append(table);
+        facts.append(node('dt', '', 'Coverage'), node('dd', '', source.coverage || 'not-indexed'),
+          node('dt', '', 'Account'), node('dd', '', source.account || ''));
+        const captured = node('div', 'pharos-card-capture');
+        captured.append(node('span', 'pharos-sub', 'Captured '), when(source.captured_at));
+        if (source.captured_at && !source.capture_finished) captured.append(node('span', 'pharos-warn', ' · interrupted'));
+        captured.append(node('span', source.needs_index ? 'pharos-warn' : 'pharos-sub', source.needs_index ? ' · needs index' : ' · indexed'));
+        card.append(head, path, facts, captured);
+        if (source.error) card.append(node('div', 'sync-note badtext', source.error));
+        grid.append(card);
       }
-      section.append(card);
     }
   }
 
@@ -513,8 +554,10 @@
         renderHosts();
       });
       toast(run?.state === 'complete' ? `Captured ${size(run.bytes_copied)}` : 'The capture finished with errors');
+      return run;
     } catch (error) {
       hostsError = error.status === 409 ? 'A capture is already running.' : error.message;
+      toast(hostsError);
     } finally {
       hostsBusy = null;
       await loadHosts().catch(() => {});
@@ -534,10 +577,33 @@
       toast(run?.state === 'complete' ? `Indexed ${label}` : `Indexing ${label} ${run?.state === 'interrupted' ? 'was interrupted' : 'finished with errors'}`);
       window.loadSources?.();
     } catch (error) {
-      hostsError = error.status === 409 ? 'A sync or index is already running; try again when it finishes.' : error.message;
+      hostsError = error.status === 409 ? 'Source indexing is already running; try again when it finishes.' : error.message;
+      toast(hostsError);
     } finally {
       hostsBusy = null;
       await loadHosts().catch(() => {});
+    }
+  }
+
+  async function captureAndIndex() {
+    if (headerCaptureIndexRunning || hostsBusy) return;
+    headerCaptureIndexRunning = true;
+    renderHeaderAction();
+    try {
+      const sources = await call('/api/sources');
+      if (!sources.enabled) {
+        toast('No enabled sources on this Mac. Open Settings → Sources to enable one.');
+        return;
+      }
+      const capture = await startCapture();
+      if (capture?.state !== 'complete') return;
+      await startIndex({all_hosts: true}, 'captured files');
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      headerCaptureIndexRunning = false;
+      renderHeaderAction();
+      await refreshStatus();
     }
   }
 
@@ -546,14 +612,13 @@
     const grid = document.getElementById('sourceGrid');
     if (!grid || !hostsData) return;
     const current = (hostsData.index.hosts || []).find(host => host.current);
-    for (const card of grid.querySelectorAll('.source-card')) {
+    for (const card of grid.querySelectorAll('.source-card:not(.remote)')) {
       const name = card.querySelector('h2')?.textContent;
       const source = current?.sources.find(item => item.name === name);
       let line = card.querySelector('.pharos-card-capture');
       if (!line) {
         line = node('div', 'pharos-card-capture');
-        const controls = card.querySelector('.source-controls');
-        if (controls) controls.before(line); else card.append(line);
+        card.append(line);
       }
       line.replaceChildren();
       if (!source) {
@@ -568,7 +633,7 @@
   // ---- Settings → Health: the drive's checks and backups
   const CHECK_TITLES = {encryption: 'Encryption', spotlight: 'Spotlight', filesystem: 'File system', location: 'Location', free_space: 'Free space', volume_pin: 'Volume pin', backup: 'Backup'};
   const STATUS_DOT = {ok: '', info: 'idle', unknown: 'idle', warning: 'warn', problem: 'bad'};
-  let backupDraft = null, backupError = null, backupBusy = false;
+  let backupDraft = null, backupError = null, backupBusy = false, driveHealthExpanded = true, driveHealthInitialized = false;
 
   async function loadDriveHealth() {
     const [drive, backup] = await Promise.all([call('/api/health/drive'), call('/api/backup')]);
@@ -580,6 +645,12 @@
     const cards = document.getElementById('healthCards');
     // Leave the form alone while someone is typing a destination.
     if (!cards || document.activeElement?.id === 'pharosBackupDestination') return;
+    if (!driveHealthInitialized && drive.status !== 'checking') {
+      const attention = (drive.checks || []).filter(check => check.status === 'warning' || check.status === 'problem');
+      if (attention.some(check => check.id !== 'backup')) driveHealthExpanded = true;
+      else if (attention.some(check => check.id === 'backup')) driveHealthExpanded = false;
+      driveHealthInitialized = true;
+    }
     let section = document.getElementById('pharosDriveHealth');
     if (!section) {
       section = node('section', 'pharos-section');
@@ -598,11 +669,31 @@
     if (drive.sizes?.library_bytes) facts.push(`library ${size(drive.sizes.library_bytes)}`);
     if (drive.checked_at) facts.push(`checked ${ago(drive.checked_at)}`);
     intro.append(node('p', 'muted', facts.join(' · ') || drive.path || ''));
-    const overall = node('span', 'pharos-chip' + (drive.status === 'warning' || drive.status === 'problem' ? ' warn' : ''),
-      {ok: 'All checks pass', info: 'All checks pass', warning: 'Needs attention', problem: 'Needs attention', checking: 'Checking…', disconnected: 'Disconnected'}[drive.status] || drive.status || 'Unknown');
-    head.append(intro, overall);
+    const controls = node('div', 'pharos-health-actions');
+    const attention = node('div', 'pharos-health-attention');
+    const attentionChecks = (drive.checks || []).filter(check => check.status === 'warning' || check.status === 'problem');
+    if (attentionChecks.length) {
+      attention.append(node('span', 'pharos-health-attention-label', 'Needs Attention:'));
+      for (const check of attentionChecks) {
+        const chip = button(CHECK_TITLES[check.id] || check.id, 'pharos-chip warn', () => {
+          driveHealthExpanded = true;
+          renderDriveHealth(drive, backup);
+          section.querySelector(`[data-check="${check.id}"]`)?.scrollIntoView({block: 'center'});
+        });
+        attention.append(chip);
+      }
+      controls.append(attention);
+    }
+    const toggle = button(driveHealthExpanded ? 'Collapse' : 'Expand', '', () => { driveHealthExpanded = !driveHealthExpanded; renderDriveHealth(drive, backup); });
+    toggle.setAttribute('aria-expanded', String(driveHealthExpanded));
+    toggle.setAttribute('aria-controls', 'pharosDriveHealthDetails');
+    controls.append(toggle);
+    head.append(intro, controls);
     section.replaceChildren(head);
 
+    const details = node('div', 'pharos-health-details');
+    details.id = 'pharosDriveHealthDetails';
+    details.hidden = !driveHealthExpanded;
     const list = node('div', 'pharos-checks');
     list.id = 'pharosDriveChecks';
     if (drive.status === 'checking') list.append(node('p', 'pharos-sub', 'Checking the drive (diskutil, Spotlight status, the library’s size)…'));
@@ -618,8 +709,8 @@
       if (check.command) { const line = codeLine(check.command); item.append(line); }
       list.append(item);
     }
-    section.append(list);
-    section.append(backupPanel(backup, name));
+    details.append(list, backupPanel(backup, name));
+    section.append(details);
   }
 
   function backupPanel(backup, driveLabel) {
@@ -720,7 +811,7 @@
     if (settingsVisible()) refreshSettings();
   }
 
-  window.pharosLibrary = {refresh: refreshStatus, status: () => status, runs, refreshSettings, onStatus: listener => listeners.add(listener)};
+  window.pharosLibrary = {refresh: refreshStatus, status: () => status, runs, refreshSettings, onStatus: listener => listeners.add(listener), toggleActivityPanel: () => (panel && panelMode === 'activity' ? closePanel() : openPanel('activity'))};
   const sheet = node('style');
   sheet.textContent = CSS;
   document.head.append(sheet);

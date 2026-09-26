@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "esbuild src/index.tsx --bundle --minify --format=iife --target=safari17 --outfile=../internal/archive/assets/query-tables.js",
+    "watch": "esbuild src/index.tsx --bundle --minify --format=iife --target=safari17 --outfile=../internal/archive/assets/query-tables.js --watch=forever",
     "check-bundle": "esbuild src/index.tsx --bundle --minify --format=iife --target=safari17 --log-level=warning --outfile=node_modules/.cache/check-bundle/query-tables.js && cmp node_modules/.cache/check-bundle/query-tables.js ../internal/archive/assets/query-tables.js && cmp node_modules/.cache/check-bundle/query-tables.css ../internal/archive/assets/query-tables.css && echo 'query-table bundle matches web/src'"
   },
   "dependencies": {

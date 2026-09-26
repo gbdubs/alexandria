@@ -94,9 +94,9 @@ const when = (value: unknown) => {
 };
 // When each Mac's TL1 was last read, which differs when the library was last
 // on that Mac.
-const synced = (installations: Row[] = []) => installations.length > 1
-  ? `Synced ${installations.map(item => `${item.host_label || "an unknown Mac"} ${when(item.synced_at)}`).join(", ")}`
-  : `Synced ${when(installations[0]?.synced_at)}`;
+const indexed = (installations: Row[] = []) => installations.length > 1
+  ? `Indexed ${installations.map(item => `${item.host_label || "an unknown Mac"} ${when(item.synced_at)}`).join(", ")}`
+  : `Indexed ${when(installations[0]?.synced_at)}`;
 const openWork = (id: unknown) => { if (id) window.alexandriaOpenDetail?.(String(id)); };
 const typing = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || ["SELECT", "TEXTAREA"].includes(target.tagName)
   || (target instanceof HTMLInputElement && !["checkbox", "radio", "button"].includes(target.type)));
@@ -443,7 +443,7 @@ export function TL1Page({ attempts, filterAttempts, copy }: Props) {
     runsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [filterAttempts, windowWhere, projectWhere]);
 
-  if (!projects.length) return <div className="tl1-page"><div className="view-heading"><div><h1>TL1</h1><p className="muted">No TL1 installations are indexed. Enable the tl1 source in Settings and sync it.</p></div></div></div>;
+  if (!projects.length) return <div className="tl1-page"><div className="view-heading"><div><h1>TL1</h1><p className="muted">No TL1 installations are indexed. Enable the tl1 source in Settings and index it.</p></div></div></div>;
 
   const totals = overview?.totals ?? {};
   const coverage = overview?.coverage ?? {};
@@ -491,7 +491,7 @@ export function TL1Page({ attempts, filterAttempts, copy }: Props) {
     {overview ? <>
       <WindowSummary resolved={overview.window ?? {}} enqueues={enqueues} onFlavor={setFlavor} onCurrent={scope === "all" ? () => setScope("current") : undefined} />
       <p className="tl1-coverage muted" title={(coverage.by_executor ?? []).map((row: Row) => `${row.executor}: ${row.with_transcript}/${row.attempts} with transcript, ${row.priced_from_tokens} priced`).join("\n")}>
-        Transcripts found for {pct(coverage.transcript_share)} of LLM runs; cost known for {pct(coverage.cost_share)}. {synced(overview.installations)}.
+        Transcripts found for {pct(coverage.transcript_share)} of LLM runs; cost known for {pct(coverage.cost_share)}. {indexed(overview.installations)}.
       </p>
       <div className="tl1-tiles">
         <Tile label="Spend" value={usd(totals.cost_usd)} detail={`${count(totals.llm_attempts)} LLM runs · ${count(totals.procedural_attempts)} procedural`} />
