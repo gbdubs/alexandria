@@ -275,11 +275,15 @@ func ensureEOF(decoder *json.Decoder) error {
 
 type canonicalAdapter struct{ baseAdapter }
 
+const exportIndexVersion = "token-events-v2"
+
+func (a *canonicalAdapter) indexVersion() string { return exportIndexVersion }
+
 func (a *canonicalAdapter) Fingerprint() (string, error) {
 	fingerprint, err := pathFingerprint(a.config.Path, func(path string, entry os.DirEntry) bool {
 		return strings.HasSuffix(strings.ToLower(entry.Name()), ".json")
 	})
-	return "token-events-v2:" + fingerprint, err
+	return a.indexVersion() + ":" + fingerprint, err
 }
 func (a *canonicalAdapter) Discover(emit func(WorkspaceRecord) error) error {
 	info, err := os.Stat(a.config.Path)

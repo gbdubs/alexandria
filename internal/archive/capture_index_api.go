@@ -58,9 +58,10 @@ func runIndexCLI(config Config, catalog *Catalog, args []string) error {
 func (s *Server) startIndex(w http.ResponseWriter, body map[string]any) {
 	names, ok := sliceValue(body["sources"])
 	all, allOK := valueOr(body["all_hosts"], false).(bool)
+	onlyNeeded, neededOK := valueOr(body["only_needed"], false).(bool)
 	host, hostOK := valueOr(body["host"], "").(string)
-	if !ok || !allOK || !hostOK || (all && host != "") {
-		writeError(w, errors.New(`body is {"host": ID} or {"all_hosts": true}, with optional "sources": [names]`), http.StatusBadRequest)
+	if !ok || !allOK || !hostOK || !neededOK || (all && host != "") {
+		writeError(w, errors.New(`body is {"host": ID} or {"all_hosts": true}, with optional "sources": [names] and "only_needed": true`), http.StatusBadRequest)
 		return
 	}
 	hosts := []string{}
@@ -76,6 +77,22 @@ func (s *Server) startIndex(w http.ResponseWriter, body map[string]any) {
 		}
 		writeError(w, err, status)
 		return
+	}
+	if onlyNeeded {
+		hosts, err := s.Catalog.capturedHosts(config.CaptureRoot)
+		if err != nil {
+			writeError(w, err, http.StatusServiceUnavailable)
+			return
+		}
+		needed := map[string]bool{}
+		for _, host := range hosts {
+			for _, source := range host["sources"].([]map[string]any) {
+				if source["needs_index"] == true {
+					needed[firstString(host["id"])+"/"+firstString(source["name"])] = true
+				}
+			}
+		}
+		targets = slices.DeleteFunc(targets, func(target captureTarget) bool { return !needed[target.label()] })
 	}
 	if !s.ingestMu.TryLock() {
 		writeError(w, errors.New("source indexing is already running"), http.StatusConflict)
@@ -256,11 +273,12 @@ func (c *Catalog) capturedHosts(root string) ([]map[string]any, error) {
 			// New manifests summarize when data was actually copied. Older ones
 			// need their file timestamps read once to recover that time.
 			var manifest struct {
-				Version    int               `json:"version"`
-				UpdatedAt  string            `json:"updated_at"`
-				LastDataAt string            `json:"last_data_at"`
-				Source     captureSourceInfo `json:"source"`
-				LastRun    *captureRunRecord `json:"last_run"`
+				Version    int                 `json:"version"`
+				UpdatedAt  string              `json:"updated_at"`
+				LastDataAt string              `json:"last_data_at"`
+				Source     captureSourceInfo   `json:"source"`
+				LastRun    *captureRunRecord   `json:"last_run"`
+				Snapshots  []*capturedSnapshot `json:"snapshots"`
 			}
 			data, err := os.ReadFile(filepath.Join(dir, item.Name(), captureManifestName))
 			if !item.IsDir() || !validCaptureName(item.Name()) || err != nil || json.Unmarshal(data, &manifest) != nil || manifest.Version == 0 {
@@ -273,7 +291,7 @@ func (c *Catalog) capturedHosts(root string) ([]map[string]any, error) {
 					lastDataAt = old.lastCapturedDataAt()
 				}
 			}
-			rows, err := queryMaps(c.DB, "SELECT coverage,last_attempt_at,last_success_at,error FROM source_states WHERE host_id=? AND source_name=?", host.ID, item.Name())
+			rows, err := queryMaps(c.DB, "SELECT coverage,last_attempt_at,last_success_at,error,index_version FROM source_states WHERE host_id=? AND source_name=?", host.ID, item.Name())
 			if err != nil {
 				return hosts, err
 			}
@@ -283,14 +301,60 @@ func (c *Catalog) capturedHosts(root string) ([]map[string]any, error) {
 			}
 			finished := manifest.LastRun != nil && manifest.LastRun.FinishedAt != ""
 			indexed, indexedOK := parseTime(firstString(state["last_success_at"]))
-			captured, capturedOK := parseTime(manifest.UpdatedAt)
+			captured, capturedOK := parseTime(lastDataAt)
+			versionChanged := false
+			adapter, adapterErr := MakeAdapter(SourceConfig{Name: item.Name(), Kind: manifest.Source.Kind, Path: manifest.Source.Path, Account: manifest.Source.Account})
+			if adapterErr == nil {
+				versionChanged = firstString(state["index_version"]) != captureSourceIndexVersion(adapter, host.ID)
+			}
+			pendingSnapshots := false
+			if len(manifest.Snapshots) > 0 {
+				marker := loadIndexMarker(filepath.Join(dir, item.Name()))
+				for _, snapshot := range manifest.Snapshots {
+					if !marker.saved[snapshot.Path+"\x1f"+snapshot.CapturedAt] {
+						pendingSnapshots = true
+						break
+					}
+					for _, generation := range snapshot.Generations {
+						if !marker.saved[snapshot.Path+"\x1f"+generation.CapturedAt] {
+							pendingSnapshots = true
+							break
+						}
+					}
+					if pendingSnapshots {
+						break
+					}
+				}
+			}
+			needsIndex := !indexedOK || firstString(state["coverage"]) != "complete" || (capturedOK && captured.After(indexed)) || versionChanged || pendingSnapshots
+			reason := ""
+			switch {
+			case !indexedOK:
+				reason = "not indexed"
+			case firstString(state["coverage"]) != "complete":
+				reason = "previous index incomplete"
+			case versionChanged:
+				reason = "indexer updated"
+			case capturedOK && captured.After(indexed):
+				reason = "new capture data"
+			case pendingSnapshots:
+				reason = "snapshots awaiting index"
+			}
 			sources = append(sources, map[string]any{"name": item.Name(), "kind": manifest.Source.Kind, "account": manifest.Source.Account, "path": manifest.Source.Path,
 				"captured_at": manifest.UpdatedAt, "last_data_at": lastDataAt, "capture_finished": finished,
 				"indexed_at": state["last_success_at"], "last_attempt_at": state["last_attempt_at"], "coverage": defaultString(state["coverage"], "not-indexed"), "error": state["error"],
-				"needs_index": !indexedOK || firstString(state["coverage"]) != "complete" || (capturedOK && captured.After(indexed))})
+				"needs_index": needsIndex, "index_reason": reason})
 		}
 		record := map[string]any{"id": host.ID, "label": host.Label, "user": host.User, "current": host.ID == currentHost().ID, "sources": sources}
 		hosts = append(hosts, record)
 	}
 	return hosts, nil
+}
+
+func captureSourceIndexVersion(adapter Adapter, hostID string) string {
+	version := sourceIndexVersion(adapter)
+	if _, partial := adapter.(partialAdapter); partial && hostID != currentHost().ID {
+		version += "@offhost"
+	}
+	return version
 }
