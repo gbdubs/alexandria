@@ -17,19 +17,21 @@ var usageSummaryWindows = []struct {
 
 // usageSummaryWindow is one window's topline totals.
 type usageSummaryWindow struct {
-	Key        string `json:"key"`
-	HumanWords int64  `json:"human_words"`
-	Messages   int64  `json:"messages"`
-	Tokens     int64  `json:"tokens"`
-	CostUSD    any    `json:"cost_usd"`
+	Key          string                        `json:"key"`
+	HumanWords   int64                         `json:"human_words"`
+	Messages     int64                         `json:"messages"`
+	Tokens       int64                         `json:"tokens"`
+	CostUSD      any                           `json:"cost_usd"`
+	CarbonTokens map[string]map[string]float64 `json:"carbon_tokens"`
 }
 
 // UsageSummary answers GET /api/usage/summary: words typed by a person, the
-// messages carrying them, tokens, and API-equivalent cost over trailing
-// windows. Human text comes from the authorship ledger, which already keeps
-// only each mirror group's representative work; tokens and cost come from the
-// same de-mirrored ledger as the Usage page. That ledger is hourly, so the
-// hour a window starts in counts in proportion to its overlap.
+// messages carrying them, tokens, API-equivalent cost, and carbon inputs by
+// model tier and token category over trailing windows. Human text comes from
+// the authorship ledger, which already keeps only each mirror group's
+// representative work; usage metrics come from the same de-mirrored ledger as
+// the Usage page. That ledger is hourly, so a window's starting hour counts in
+// proportion to its overlap.
 func (c *Catalog) UsageSummary(ctx context.Context) (map[string]any, error) {
 	now := c.clock()
 	windows := make([]*usageSummaryWindow, len(usageSummaryWindows))
@@ -73,6 +75,10 @@ func (c *Catalog) UsageSummary(ctx context.Context) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	carbon, err := loadCarbonDocument()
+	if err != nil {
+		return nil, err
+	}
 	for _, entry := range ledger {
 		hour, ok := parseTime(firstString(entry["usage_hour"]))
 		day := ""
@@ -81,6 +87,8 @@ func (c *Catalog) UsageSummary(ctx context.Context) (map[string]any, error) {
 		}
 		tokens := ledgerTokens(entry)
 		priced := book.cost(ledgerModel(entry), day, tokens)
+		tier, _ := carbon.tier(ledgerModel(entry))
+		carbonParts := carbonTokens(entry)
 		for index, window := range windows {
 			share := 1.0
 			if !cutoffs[index].IsZero() {
@@ -93,11 +101,20 @@ func (c *Catalog) UsageSummary(ctx context.Context) (map[string]any, error) {
 				continue
 			}
 			window.Tokens += int64(float64(tokens["total_tokens"])*share + .5)
+			if window.CarbonTokens == nil {
+				window.CarbonTokens = map[string]map[string]float64{}
+			}
+			if window.CarbonTokens[tier] == nil {
+				window.CarbonTokens[tier] = map[string]float64{}
+			}
+			for category, count := range carbonParts {
+				window.CarbonTokens[tier][category] += float64(count) * share
+			}
 			if priced.cost != nil {
 				cost := *priced.cost * share
 				window.CostUSD = addCost(window.CostUSD, &cost)
 			}
 		}
 	}
-	return map[string]any{"generated_at": now.UTC().Format(time.RFC3339), "windows": windows}, nil
+	return map[string]any{"generated_at": now.UTC().Format(time.RFC3339), "windows": windows, "carbon_factors": carbon}, nil
 }

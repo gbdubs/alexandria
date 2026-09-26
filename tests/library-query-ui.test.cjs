@@ -9,6 +9,44 @@ const { chromium } = createRequire(path.join(root, '.context/browser-tests/packa
 const source = fs.readFileSync(['src/ai_work_archive/ui.py', 'internal/archive/assets/ui.py'].map(name => path.join(root, name)).find(file => fs.existsSync(file)), 'utf8');
 const html = source.slice(source.indexOf("r'''") + 4, source.lastIndexOf("'''"));
 
+test('annotation controls stay above a native modal and return to the page when it closes', async () => {
+  const chrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  const browser = await chromium.launch({ headless: true, ...(fs.existsSync(chrome) ? { executablePath: chrome } : {}) });
+  try {
+    const page = await browser.newPage();
+    await page.route('http://annotation-modal.test/**', route => {
+      if (new URL(route.request().url()).pathname === '/library') return route.fulfill({ contentType: 'text/html', body: html });
+      if (new URL(route.request().url()).pathname.startsWith('/api/')) return route.fulfill({ contentType: 'application/json', body: '{"items":[]}' });
+      return route.fulfill({ contentType: 'application/javascript', body: '' });
+    });
+    await page.goto('http://annotation-modal.test/library');
+    await page.evaluate(() => {
+      setFeedbackEnabled(true);
+      const dialog = document.createElement('dialog');
+      dialog.setAttribute('aria-label', 'Review modal');
+      dialog.innerHTML = '<h2>Modal heading</h2><button type="button">Close</button>';
+      dialog.querySelector('button').onclick = () => dialog.close();
+      dialog.addEventListener('close', () => dialog.remove());
+      document.body.append(dialog);
+      dialog.showModal();
+    });
+    const dialog = page.getByRole('dialog', { name: 'Review modal' });
+    await page.waitForFunction(() => document.querySelector('.feedback-toolbar')?.closest('dialog')?.open);
+    await page.locator('#feedbackTarget').click();
+    await dialog.getByRole('heading', { name: 'Modal heading' }).click();
+    assert.equal(await page.locator('#feedbackComposer.open').isVisible(), true);
+    assert.equal(await dialog.isVisible(), true);
+    await page.locator('#feedbackNote').fill('Please improve this modal');
+    await page.locator('#feedbackAdd').click();
+    assert.match(await page.locator('#feedbackPanel').textContent(), /Please improve this modal/);
+    assert.equal(await page.locator('#feedbackPins .feedback-pin').count(), 1);
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+    await dialog.waitFor({ state: 'detached' });
+    await page.waitForFunction(() => document.querySelector('.feedback-toolbar')?.parentElement === document.body);
+    assert.equal(await page.locator('#feedbackPins .feedback-pin').count(), 0);
+  } finally { await browser.close(); }
+});
+
 test('Library table uses page scroll and conversation cards expose stacked Markdown and work facts', async () => {
   const chrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
   const browser = await chromium.launch({ headless: true, ...(fs.existsSync(chrome) ? { executablePath: chrome } : {}) });
@@ -207,8 +245,26 @@ test('Library search asks for substring matches and explanations by default and 
     assert.equal(await dialog.locator('mark').innerText(), 'log_que');
     assert.match(await dialog.innerText(), /Related concept “failure”/);
     assert.match(await dialog.innerText(), /Treat this match as weak/);
+    await page.evaluate(() => setFeedbackEnabled(true));
+    await page.locator('#feedbackTarget').click();
+    assert.equal(await dialog.isVisible(), true, 'opening annotation mode preserves the dialog');
+    await dialog.locator('h2').click();
+    assert.equal(await page.locator('#feedbackComposer.open').count(), 1);
+    assert.equal(await dialog.isVisible(), true, 'annotating dialog content preserves the dialog');
+    await page.locator('#feedbackCancel').click();
     await page.keyboard.press('Escape');
     await dialog.waitFor({ state: 'detached' });
+
+    await page.locator('#usageSummaryToggle').click();
+    assert.equal(await page.locator('#usageSummary').isVisible(), true);
+    await page.locator('#feedbackTarget').click();
+    assert.equal(await page.locator('#usageSummary').isVisible(), true, 'opening annotation mode preserves the usage panel');
+    await page.locator('#usageSummary th').first().click();
+    assert.equal(await page.locator('#feedbackComposer.open').count(), 1);
+    assert.equal(await page.locator('#usageSummary').isVisible(), true, 'annotating the usage panel preserves it');
+    await page.locator('#feedbackCancel').click();
+    await page.locator('#queryTableLibrary .qt-qb').click({ position: { x: 2, y: 2 } });
+    assert.equal(await page.locator('#usageSummary').isVisible(), false, 'normal outside clicks still dismiss the usage panel');
 
     await page.getByLabel('Match inside words').uncheck();
     await page.getByLabel('Show why each result matched').uncheck();

@@ -402,15 +402,14 @@ A per-user `archive.toml` has no per-Mac file, so there `probe` only reports:
 `--accept` and `POST /api/probe/accept` refuse, and the `[[sources]]` wanted are
 copied into `archive.toml` by hand.
 
-**Macs and captures** (Settings → Sources, below this Mac's source cards) shows
-this Mac and every captured Mac with, per source, when it was last captured,
-when it was last indexed (by an index of its captures or, on this Mac, a live
-sync), and whether it needs indexing: never indexed, indexed only partly, or
-captured again since. **Capture <this Mac>** captures this Mac's enabled
-sources; **Index <Mac>** indexes one Mac's captures and **Index all Macs** every
-Mac's (`POST /api/index` with `{"host": …}` or `{"all_hosts": true}`). Each of
-this Mac's source cards also says when it was captured. The live sync buttons
-(**Sync one**, **Sync all enabled**) and the enable switches work as before.
+Settings → Sources keeps three actions together: **Find sources on this Mac**
+configures local sources, **Capture this Mac** copies enabled sources into the
+library, and **Index captured files** indexes captures from every Mac. The
+header button beside the library disk runs **Capture and Index** in that order.
+The enable switch sits in each source card's header. Below the cards, **Macs and
+captures** shows when each source was captured and indexed, and what still
+needs indexing. The API can still target one host or source with `POST
+/api/index` using `{"host": …}` or `{"sources": […]}`.
 
 ## Running from an external drive
 
@@ -519,8 +518,9 @@ progress is, and the next run redoes it.
   `without_eject` (`probably-fine` when idle, `unsafe` otherwise,
   `not-applicable`), and a `summary` for people.
 
-The header shows the drive's name and the first activity with its progress;
-its panel lists every activity, the advice above, and **Eject <drive>**. In the
+The header shows the drive's name, running work, and a failed index alert; its panel lists every
+current activity, the latest index result this session and errors, the advice above, and
+**Eject <drive>**. In the
 app, Eject asks the app (script message handler `pharosLibrary`, action
 `eject`) to release the library exactly as for an eject from Finder, then to
 run `diskutil eject` on the drive, which unmounts all of its volumes and ejects

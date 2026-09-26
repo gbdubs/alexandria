@@ -161,21 +161,33 @@ func (s *Server) authorized(r *http.Request) bool {
 	return err == nil && secureEqual(value, token)
 }
 
+// isUIPage reports whether path is one of the app's client-side routes, each
+// of which serves the single-page UI.
+func isUIPage(path string) bool {
+	switch path {
+	case "/", "/library", "/settings", "/sources", "/activity", "/usage", "/tools", "/tl1", "/health", "/mcp":
+		return true
+	}
+	return strings.HasPrefix(path, "/work/")
+}
+
+// uiAssets maps each static asset URL the UI loads to its file under assets/.
+var uiAssets = map[string]struct{ name, contentType string }{
+	"/assets/query-tables.js":  {"query-tables.js", "text/javascript; charset=utf-8"},
+	"/assets/query-tables.css": {"query-tables.css", "text/css; charset=utf-8"},
+	"/assets/onboarding.js":    {"onboarding.js", "text/javascript; charset=utf-8"},
+	"/assets/library.js":       {"library.js", "text/javascript; charset=utf-8"},
+	"/assets/carbon.js":        {"carbon.js", "text/javascript; charset=utf-8"},
+}
+
 func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	switch {
-	case path == "/" || path == "/library" || path == "/settings" || path == "/sources" || path == "/activity" || path == "/usage" || path == "/tools" || path == "/tl1" || path == "/health" || path == "/mcp" || strings.HasPrefix(path, "/work/"):
+	case isUIPage(path):
 		writeHTML(w, appHTML())
-	case path == "/assets/query-tables.js":
-		writeEmbeddedAsset(w, "query-tables.js", "text/javascript; charset=utf-8")
-	case path == "/assets/query-tables.css":
-		writeEmbeddedAsset(w, "query-tables.css", "text/css; charset=utf-8")
-	case path == "/assets/onboarding.js":
-		writeEmbeddedAsset(w, "onboarding.js", "text/javascript; charset=utf-8")
-	case path == "/assets/library.js":
-		writeEmbeddedAsset(w, "library.js", "text/javascript; charset=utf-8")
-	case path == "/assets/carbon.js":
-		writeEmbeddedAsset(w, "carbon.js", "text/javascript; charset=utf-8")
+	case uiAssets[path].name != "":
+		asset := uiAssets[path]
+		writeEmbeddedAsset(w, asset.name, asset.contentType)
 	case path == "/api/probe":
 		writeJSON(w, ProbeSources(s.Config(), s.Catalog), http.StatusOK)
 	case path == "/api/probe/status":
@@ -565,12 +577,12 @@ func (s *Server) sourceInventory() (map[string]any, error) {
 	return map[string]any{"items": items, "configured": len(items), "enabled": enabled,
 		"host": host, "hosts": hosts, "other_host_sources": freshness["other_host_sources"],
 		"ingested_documents": ingestedDocuments, "total_conversations": totalConversations,
-		"note": "Source sync is read-only."}, nil
+		"note": "Source indexing reads files without changing them."}, nil
 }
 
 func (s *Server) syncSources(w http.ResponseWriter, sources []SourceConfig) {
 	if !s.ingestMu.TryLock() {
-		writeJSON(w, map[string]any{"error": "another source sync is already running"}, http.StatusConflict)
+		writeJSON(w, map[string]any{"error": "source indexing is already running"}, http.StatusConflict)
 		return
 	}
 	defer s.ingestMu.Unlock()
@@ -784,6 +796,9 @@ func writeJSON(w http.ResponseWriter, value any, status int) {
 
 func writeEmbeddedAsset(w http.ResponseWriter, name, contentType string) {
 	payload, err := queryTableAsset(name)
+	writeAsset(w, name, payload, err, contentType)
+}
+func writeAsset(w http.ResponseWriter, name string, payload []byte, err error, contentType string) {
 	if err != nil {
 		writeError(w, fmt.Errorf("asset unavailable: %s", name), http.StatusNotFound)
 		return

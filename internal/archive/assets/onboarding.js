@@ -4,8 +4,8 @@
 // choice for this Mac (POST /api/probe/accept). It then captures the added
 // sources onto the library (POST /api/capture), which is quick, so the drive
 // can be ejected, and offers to index them now (POST /api/index); indexing can
-// also run later, on any Mac. Settings → Sources gets a note naming the Mac its
-// sources belong to, with a button to look again.
+// also run later, on any Mac. Settings → Sources keeps the source discovery
+// action with Capture and Index.
 (() => {
   'use strict';
   const DISMISSED = 'pharos-onboarding-dismissed:';
@@ -31,10 +31,9 @@
 .pharos-chip{border:1px solid var(--line,#ccc);border-radius:20px;padding:1px 8px;font-size:12px;color:var(--muted,#666)}
 .pharos-onboard-actions{display:flex;justify-content:flex-end;align-items:center;gap:10px;padding:14px 24px;border-top:1px solid var(--line,#ccc)}
 .pharos-error{color:var(--bad,#9c3d36)}.pharos-onboard-actions .pharos-error{margin-right:auto;font-size:13px}
-.pharos-onboard-actions button,.pharos-host-note button{border:1px solid var(--line,#ccc);background:var(--panel,#fff);color:var(--ink,#222)}
+.pharos-onboard-actions button{border:1px solid var(--line,#ccc);background:var(--panel,#fff);color:var(--ink,#222)}
 .pharos-onboard-actions button.primary{background:var(--accent,#315845);border-color:var(--accent,#315845);color:var(--panel,#fff)}
 .pharos-onboard-actions button:disabled{opacity:.55;cursor:default}
-.pharos-host-note{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin:0 0 14px;padding:10px 14px;border:1px dashed var(--line,#ccc);border-radius:12px;font-size:13px;color:var(--muted,#666)}
 .pharos-steps{margin:14px 0 18px;border-top:1px solid var(--line,#ccc)}
 .pharos-step{display:grid;grid-template-columns:minmax(110px,1fr) 3fr;gap:4px 14px;padding:10px 0;border-bottom:1px solid var(--line,#ccc);font-size:13px}
 .pharos-step strong{font-size:14px}
@@ -319,7 +318,7 @@
       run = await runs.index({sources}, update => { if (update && shown()) rows.replaceChildren(indexRows(update)); });
     } catch (failure) {
       if (!shown()) return toast(failure.message);
-      body.replaceChildren(node('p', 'pharos-error', failure.status === 409 ? 'A sync or index is already running. Index these captures from Settings → Sources once it finishes.' : `Indexing did not start: ${failure.message}`));
+      body.replaceChildren(node('p', 'pharos-error', failure.status === 409 ? 'Source indexing is already running. Index these captures from Settings → Sources once it finishes.' : `Indexing did not start: ${failure.message}`));
       actions.replaceChildren(button('Close', true, close));
       return;
     }
@@ -337,22 +336,17 @@
   }
 
   async function refreshNote() {
-    const grid = document.getElementById('sourceGrid');
+    const slot = document.getElementById('sourceSetupAction');
     let status;
     try { status = await call('/api/probe/status'); } catch { return null; }
-    if (!grid || !status.library) return status;
-    let note = document.getElementById('pharosHostSources');
-    if (!note) {
-      note = node('div', 'pharos-host-note');
-      note.id = 'pharosHostSources';
-      grid.before(note);
-    }
-    const text = `Sources on ${hostLabel(status)} (this Mac): ${plural(status.host_sources, 'source')} in ${status.host_file_display}` +
-      (status.shared_sources ? ` · ${plural(status.shared_sources, 'source')} shared by every Mac in library.toml` : '');
+    if (!slot) return status;
+    if (!status.library) { slot.replaceChildren(); return status; }
     const find = node('button', '', 'Find sources on this Mac…');
     find.type = 'button';
+    find.id = 'pharosFindSources';
+    find.title = `Look for conversation sources on ${hostLabel(status)}. Configuration is saved in ${status.host_file_display}.`;
     find.onclick = () => openPanel(status, !status.host_file_exists);
-    note.replaceChildren(node('span', '', text), find);
+    slot.replaceChildren(find);
     return status;
   }
 
